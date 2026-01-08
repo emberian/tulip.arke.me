@@ -10,7 +10,7 @@ from typing import Any
 
 from zerver.lib.queue import queue_event_on_commit
 from zerver.models import Message, Realm, SubMessage, UserProfile
-from zerver.tornado.django_api import send_event_on_commit
+from zerver.tornado.django_api import send_event_on_commit as send_event
 
 
 def do_handle_bot_interaction(
@@ -67,7 +67,7 @@ def do_handle_bot_interaction(
     target_user_ids = event_recipient_ids_for_action_on_messages(
         [message.id], message.is_channel_message
     )
-    send_event_on_commit(realm, event, target_user_ids)
+    send_event(realm, event, target_user_ids)
 
     # Queue the interaction for the bot to process
     queue_bot_interaction_event(
@@ -129,4 +129,8 @@ def queue_bot_interaction_event(
         },
     }
 
+    # Send event to bot via websocket (bot can subscribe to bot_interaction events)
+    send_event(bot.realm, event, [bot.id])
+
+    # Also queue for webhook delivery (for bots that use webhook-based delivery)
     queue_event_on_commit("bot_interactions", event)
