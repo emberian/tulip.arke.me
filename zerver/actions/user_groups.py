@@ -204,6 +204,7 @@ def do_send_create_user_group_event(
             date_created=date_created,
             members=member_ids,
             description=user_group.description,
+            color=user_group.color,
             id=user_group.id,
             is_system_group=user_group.is_system_group,
             direct_subgroup_ids=direct_subgroup_ids,

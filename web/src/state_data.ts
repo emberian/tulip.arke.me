@@ -262,6 +262,7 @@ export const raw_user_group_schema = z.object({
     creator_id: z.nullable(z.number()),
     date_created: z.nullable(z.number()),
     name: z.string(),
+    color: z.string(),
     members: z.array(z.number()),
     is_system_group: z.boolean(),
     direct_subgroup_ids: z.array(z.number()),

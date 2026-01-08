@@ -329,9 +329,10 @@ function parse_with_options(
                     }
                 }
 
+                const style = group.color ? ` style="background-color: ${_.escape(group.color)};"` : "";
                 return `<span class="${classes}" data-user-group-id="${_.escape(
                     group.id.toString(),
-                )}">${_.escape(display_text)}</span>`;
+                )}"${style}>${_.escape(display_text)}</span>`;
             }
             return undefined;
         },
