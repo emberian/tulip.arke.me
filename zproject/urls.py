@@ -112,6 +112,7 @@ from zerver.views.presence import (
     get_status_backend,
     get_statuses_for_realm,
     update_active_status_backend,
+    update_bot_presence_backend,
     update_user_status_admin,
     update_user_status_backend,
 )
@@ -498,6 +499,7 @@ v1_api_and_json_patterns = [
     # /users/me/presence endpoint.
     rest_path("users/<user_id_or_email>/presence", GET=get_presence_backend),
     rest_path("realm/presence", GET=get_statuses_for_realm),
+    rest_path("bots/me/presence", POST=update_bot_presence_backend),
     rest_path("users/me/status", POST=update_user_status_backend),
     rest_path("users/<int:user_id>/status", POST=update_user_status_admin, GET=get_status_backend),
     # user_groups -> zerver.views.user_groups

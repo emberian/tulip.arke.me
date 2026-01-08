@@ -1,5 +1,6 @@
 import assert from "minimalistic-assert";
 
+import * as bot_presence from "./bot_presence.ts";
 import * as hash_util from "./hash_util.ts";
 import {$t} from "./i18n.ts";
 import * as message_lists from "./message_lists.ts";
@@ -52,6 +53,13 @@ export function set_is_searching_users(val: boolean): void {
 export function get_user_circle_class(user_id: number, use_deactivated_circle = false): string {
     if (use_deactivated_circle) {
         return "user-circle-deactivated";
+    }
+
+    const person = people.maybe_get_user_by_id(user_id, true);
+    if (person?.is_bot) {
+        // For bots, check bot_presence to determine if connected
+        const is_connected = bot_presence.is_bot_connected(user_id);
+        return is_connected ? "user-circle-bot" : "user-circle-offline";
     }
 
     const status = presence.get_status(user_id);
@@ -505,4 +513,29 @@ export function matches_filter(user_filter_text: string, user_id: number): boole
     // This is a roundabout way of checking a user if you look
     // too hard at it, but it should be fine for now.
     return filter_user_ids(user_filter_text, [user_id]).length === 1;
+}
+
+export function get_filtered_bot_user_ids(user_filter_text: string): number[] {
+    // Get all active bot user IDs for display in the bots section
+    const bot_ids = people.get_bot_ids();
+
+    // Filter to only active bots
+    let filtered_bot_ids = bot_ids.filter((user_id) => people.is_person_active(user_id));
+
+    // If there's a search filter, apply it
+    if (user_filter_text) {
+        const persons = filtered_bot_ids.map((user_id) => people.get_by_user_id(user_id));
+        filtered_bot_ids = [...people.filter_people_by_search_terms(persons, user_filter_text)];
+    }
+
+    // Sort bots alphabetically by name
+    filtered_bot_ids.sort((a, b) => {
+        const person_a = people.maybe_get_user_by_id(a);
+        const person_b = people.maybe_get_user_by_id(b);
+        const full_name_a = person_a ? person_a.full_name : "";
+        const full_name_b = person_b ? person_b.full_name : "";
+        return util.strcmp(full_name_a, full_name_b);
+    });
+
+    return filtered_bot_ids;
 }

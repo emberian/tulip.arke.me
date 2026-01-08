@@ -15,3 +15,8 @@ export {page_load_time} from "./setup.ts";
 export {current_user, realm} from "./state_data.ts";
 export {add_user_id_to_new_stream} from "./stream_create_subscribers.ts";
 export {get as get_message} from "./message_store.ts";
+export {
+    update_info as update_bot_presence,
+    is_bot_connected,
+    get_info as get_bot_presence_info,
+} from "./bot_presence.ts";

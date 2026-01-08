@@ -111,8 +111,9 @@ export let build_user_sidebar = (): number[] | undefined => {
     const filter_text = user_filter.text();
 
     const all_user_ids = buddy_data.get_filtered_and_sorted_user_ids(filter_text);
+    const all_bot_ids = buddy_data.get_filtered_bot_user_ids(filter_text);
 
-    buddy_list.populate({all_user_ids});
+    buddy_list.populate({all_user_ids, all_bot_ids});
 
     return all_user_ids; // for testing
 };
