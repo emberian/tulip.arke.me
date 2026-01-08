@@ -502,6 +502,22 @@
         }
     }
 
+    /* Inline spoiler styling */
+    .spoiler-inline {
+        background-color: hsl(0deg 0% 20%);
+        color: transparent;
+        border-radius: 3px;
+        padding: 0 4px;
+        cursor: pointer;
+        transition: color 0.2s ease;
+
+        &:hover,
+        &:focus,
+        &.revealed {
+            color: inherit;
+        }
+    }
+
     /* embedded link previews */
     .message-thumbnail-gallery {
         display: flex;

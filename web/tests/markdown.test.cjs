@@ -533,6 +533,15 @@ test("marked", ({override}) => {
         },
         {input: "Test *italic*", expected: "<p>Test <em>italic</em></p>"},
         {
+            input: "This is ||secret text||",
+            expected: '<p>This is <span class="spoiler-inline">secret text</span></p>',
+        },
+        {
+            input: "Multiple ||first|| and ||second|| spoilers",
+            expected:
+                '<p>Multiple <span class="spoiler-inline">first</span> and <span class="spoiler-inline">second</span> spoilers</p>',
+        },
+        {
             input: "T\n#**Denmark**",
             expected:
                 '<p>T<br>\n<a class="stream" data-stream-id="1" href="/#narrow/channel/1-Denmark">#Denmark</a></p>',

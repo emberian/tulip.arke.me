@@ -477,6 +477,7 @@ var inline = {
   code: /^(`+)(\s*[\s\S]*?[^`]\s*)\1(?!`)/,
   br: /^ {2,}\n(?!\s*$)/,
   del: noop,
+  spoiler_inline: noop,
   emoji: noop,
   unicodeemoji: noop,
   usermention: noop,
@@ -541,6 +542,7 @@ inline.breaks = merge({}, inline.gfm, {
 const possible_emoji_regex = /^(\p{RI}\p{RI}|\p{Emoji}(?:\p{Emoji_Modifier}|\u{FE0F}\u{20E3}?|[\u{E0020}-\u{E007E}]+\u{E007F})?(?:\u{200D}(?:\p{RI}\p{RI}|\p{Emoji}(?:\p{Emoji_Modifier}|\u{FE0F}\u{20E3}?|[\u{E0020}-\u{E007E}]+\u{E007F})?))*)/u;
 
 inline.zulip = merge({}, inline.breaks, {
+  spoiler_inline: /^\|\|([^|\n]+?)\|\|(?!\|)/,
   emoji: /^:([A-Za-z0-9_\-\+]+?):/,
   unicodeemoji: possible_emoji_regex,
   usermention: /^@(_?)(?:\*\*([^\*]+)\*\*)/, // Match potentially multi-word string between @** **
@@ -555,7 +557,7 @@ inline.zulip = merge({}, inline.breaks, {
           '\ud83d[\ude80-\udeff]|\ud83e[\udd00-\uddff]|' +
           '[\u2000-\u206F]|[\u2300-\u27BF]|[\u2B00-\u2BFF]|' +
           '[\u3000-\u303F]|[\u3200-\u32FF])|')
-    (']|', '#@:]|')
+    (']|', '#@:|]|')
     ('^[', '^^\\${3,}|^^[')
     ()
 });
@@ -808,6 +810,13 @@ InlineLexer.prototype.output = function(src) {
     if (cap = this.rules.del.exec(src)) {
       src = src.substring(cap[0].length);
       out += this.renderer.del(this.output(cap[1]));
+      continue;
+    }
+
+    // inline spoiler (Zulip)
+    if (cap = this.rules.spoiler_inline.exec(src)) {
+      src = src.substring(cap[0].length);
+      out += this.renderer.spoiler_inline(this.output(cap[1]));
       continue;
     }
 
@@ -1120,6 +1129,10 @@ Renderer.prototype.br = function() {
 
 Renderer.prototype.del = function(text) {
   return '<del>' + text + '</del>';
+};
+
+Renderer.prototype.spoiler_inline = function(text) {
+  return '<span class="spoiler-inline">' + text + '</span>';
 };
 
 Renderer.prototype.link = function(href, title, text) {

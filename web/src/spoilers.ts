@@ -48,10 +48,21 @@ export const hide_spoilers_in_notification = ($content: JQuery): JQuery => {
         text = `${text}(…)`;
         $(elem).find(".spoiler-header").text(text);
     });
+    // Replace inline spoilers with placeholder text
+    $content.find(".spoiler-inline").each((_i, elem) => {
+        $(elem).text("(spoiler)");
+    });
     return $content;
 };
 
 export function initialize(): void {
+    // Inline spoiler click handler - toggle revealed state
+    $("body").on("click", ".spoiler-inline", function (this: HTMLElement, e) {
+        e.preventDefault();
+        e.stopPropagation();
+        $(this).toggleClass("revealed");
+    });
+
     $("body").on("click", ".spoiler-header", function (this: HTMLElement, e) {
         const $button = $(this).children(".spoiler-button");
         const $arrow = $button.children(".spoiler-arrow");

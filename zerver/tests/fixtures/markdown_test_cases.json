@@ -321,6 +321,30 @@
       "text_content": "test http://xx.xx link"
     },
     {
+      "name": "inline_spoiler_basic",
+      "input": "I know ||the secret||",
+      "expected_output": "<p>I know <span class=\"spoiler-inline\">the secret</span></p>",
+      "text_content": "I know the secret"
+    },
+    {
+      "name": "inline_spoiler_multiword",
+      "input": "The answer is ||forty two||",
+      "expected_output": "<p>The answer is <span class=\"spoiler-inline\">forty two</span></p>",
+      "text_content": "The answer is forty two"
+    },
+    {
+      "name": "inline_spoiler_multiple",
+      "input": "||first|| and ||second||",
+      "expected_output": "<p><span class=\"spoiler-inline\">first</span> and <span class=\"spoiler-inline\">second</span></p>",
+      "text_content": "first and second"
+    },
+    {
+      "name": "inline_spoiler_not_triple_pipe",
+      "input": "|||not a spoiler|||",
+      "expected_output": "<p>|||not a spoiler|||</p>",
+      "text_content": "|||not a spoiler|||"
+    },
+    {
       "name": "underscore_disabled",
       "input": "_foo_",
       "expected_output": "<p>_foo_</p>"

@@ -1265,6 +1265,19 @@ class Timestamp(markdown.inlinepatterns.Pattern):
         return time_element
 
 
+class InlineSpoilerPattern(markdown.inlinepatterns.Pattern):
+    def __init__(self, pattern: str, zmd: "ZulipMarkdown") -> None:
+        super().__init__(pattern, zmd)
+        self.zmd = zmd
+
+    @override
+    def handleMatch(self, match: Match[str]) -> Element:
+        spoiler_element = Element("span")
+        spoiler_element.set("class", "spoiler-inline")
+        spoiler_element.text = match.group("content")
+        return spoiler_element
+
+
 # From https://unicode.org/reports/tr51/#EBNF_and_Regex. Keep this synced with `possible_emoji_regex`.
 POSSIBLE_EMOJI_RE = regex.compile(
     r"""(?P<syntax>
@@ -2333,6 +2346,8 @@ class ZulipMarkdown(markdown.Markdown):
         #
         # Custom strikethrough syntax: ~~foo~~
         DEL_RE = r"(?<!~)(\~\~)([^~\n]+?)(\~\~)(?!~)"
+        # Custom inline spoiler syntax: ||foo||
+        SPOILER_INLINE_RE = r"(?<!\|)\|\|(?P<content>[^|\n]+?)\|\|(?!\|)"
         # Custom bold syntax: **foo** but not __foo__
         # str inside ** must start and end with a word character
         # it need for things like "const char *x = (char *)y"
@@ -2379,6 +2394,9 @@ class ZulipMarkdown(markdown.Markdown):
         reg.register(markdown.inlinepatterns.SimpleTagPattern(STRONG_RE, "strong"), "strong", 35)
         reg.register(markdown.inlinepatterns.SimpleTagPattern(EMPHASIS_RE, "em"), "emphasis", 30)
         reg.register(markdown.inlinepatterns.SimpleTagPattern(DEL_RE, "del"), "del", 25)
+        reg.register(
+            InlineSpoilerPattern(SPOILER_INLINE_RE, self), "spoiler_inline", 24
+        )
         reg.register(
             markdown.inlinepatterns.SimpleTextInlineProcessor(
                 markdown.inlinepatterns.NOT_STRONG_RE
