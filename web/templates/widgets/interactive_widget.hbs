@@ -22,7 +22,7 @@
                 class="widget-select"
                 data-custom-id="{{custom_id}}"
                 {{#if disabled}}disabled{{/if}}
-                {{#if (gt max_values 1)}}multiple{{/if}}
+                {{#if is_multiple}}multiple{{/if}}
             >
                 {{#if placeholder}}
                 <option value="" disabled selected>{{placeholder}}</option>

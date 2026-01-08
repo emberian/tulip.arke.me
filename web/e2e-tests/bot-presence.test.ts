@@ -5,27 +5,17 @@ import type {Page} from "puppeteer";
 import * as common from "./lib/common.ts";
 
 async function get_all_bot_ids(page: Page): Promise<number[]> {
-    // Get all bot user IDs from the people module
-    return await page.evaluate(() => {
-        const bots: number[] = [];
-        // Access people module through the window object
-        const all_users = (window as any).people.get_all_persons();
-        for (const user of all_users) {
-            if (user.is_bot) {
-                bots.push(user.user_id);
-            }
-        }
-        return bots;
-    });
+    // Get all bot user IDs using zulip_test helper
+    return await page.evaluate(() => zulip_test.get_bot_ids());
 }
 
 async function test_bots_section_exists(page: Page): Promise<void> {
     console.log("Testing that bots section exists in sidebar");
 
-    // Wait for the buddy list to load
-    await page.waitForSelector("#buddy-list-users-matching-view-container", {visible: true});
+    // Wait for the right sidebar to load - the user-list-filter is always visible
+    await page.waitForSelector(".user-list-filter", {visible: true, timeout: 30000});
 
-    // Check that the bots container exists
+    // Check that the bots container exists in the DOM (it might have no-display class)
     const bots_container = await page.$("#buddy-list-bots-container");
     assert.ok(bots_container, "Bots container should exist in the sidebar");
 }
@@ -52,7 +42,7 @@ async function test_bot_presence_updates(page: Page): Promise<void> {
 
     // Trigger a redraw of the buddy list
     await page.evaluate(() => {
-        (window as any).activity_ui.redraw();
+        zulip_test.redraw_buddy_list();
     });
 
     // Wait a moment for the UI to update
@@ -79,7 +69,7 @@ async function test_bot_presence_updates(page: Page): Promise<void> {
 
     // Trigger a redraw
     await page.evaluate(() => {
-        (window as any).activity_ui.redraw();
+        zulip_test.redraw_buddy_list();
     });
 
     // Verify the bot is now disconnected
@@ -107,13 +97,13 @@ async function test_bot_presence_indicator_classes(page: Page): Promise<void> {
     }, test_bot_id);
 
     await page.evaluate(() => {
-        (window as any).activity_ui.redraw();
+        zulip_test.redraw_buddy_list();
     });
 
     // Check that the connected class is used for the presence indicator
     // The buddy_data.get_user_circle_class should return "user-circle-bot" for connected bots
     const circle_class = await page.evaluate((bot_id: number) => {
-        return (window as any).buddy_data.get_user_circle_class(bot_id);
+        return zulip_test.get_user_circle_class(bot_id);
     }, test_bot_id);
 
     assert.equal(circle_class, "user-circle-bot", "Connected bot should have user-circle-bot class");
@@ -124,12 +114,12 @@ async function test_bot_presence_indicator_classes(page: Page): Promise<void> {
     }, test_bot_id);
 
     await page.evaluate(() => {
-        (window as any).activity_ui.redraw();
+        zulip_test.redraw_buddy_list();
     });
 
     // Check that the offline class is used for disconnected bots
     const offline_class = await page.evaluate((bot_id: number) => {
-        return (window as any).buddy_data.get_user_circle_class(bot_id);
+        return zulip_test.get_user_circle_class(bot_id);
     }, test_bot_id);
 
     assert.equal(

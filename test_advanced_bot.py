@@ -767,7 +767,7 @@ def handle_button_click(custom_id, user):
         request_id = custom_id.replace('approve_', '')
         return jsonify({
             "content": f"Request #{request_id} has been **approved** by {user_name}!",
-            "widget_content": {
+            "widget_content": json.dumps({
                 "widget_type": "rich_embed",
                 "extra_data": {
                     "title": f"Request #{request_id} - Approved",
@@ -775,7 +775,7 @@ def handle_button_click(custom_id, user):
                     "color": 3066993,  # Green
                     "timestamp": datetime.utcnow().isoformat() + "Z"
                 }
-            }
+            })
         })
 
     if custom_id.startswith('reject_'):
@@ -846,7 +846,7 @@ def handle_modal_submit(custom_id, data, user):
 
         return jsonify({
             "content": f"**New Feedback Received**",
-            "widget_content": {
+            "widget_content": json.dumps({
                 "widget_type": "rich_embed",
                 "extra_data": {
                     "title": subject,
@@ -860,7 +860,7 @@ def handle_modal_submit(custom_id, data, user):
                     ],
                     "timestamp": datetime.utcnow().isoformat() + "Z"
                 }
-            }
+            })
         })
 
     if custom_id == 'bug_report_modal':
@@ -870,7 +870,7 @@ def handle_modal_submit(custom_id, data, user):
 
         return jsonify({
             "content": f"**Bug Report Filed**",
-            "widget_content": {
+            "widget_content": json.dumps({
                 "widget_type": "rich_embed",
                 "extra_data": {
                     "title": f"Bug: {title}",
@@ -884,7 +884,7 @@ def handle_modal_submit(custom_id, data, user):
                     ],
                     "timestamp": datetime.utcnow().isoformat() + "Z"
                 }
-            }
+            })
         })
 
     return jsonify({
@@ -993,7 +993,8 @@ def handle_testbot_command(content):
 
     return jsonify({
         "content": f"**{name}** widget:" if len(widgets_to_send) == 1 else f"Showing **{name}** (1 of {len(widgets_to_send)}):",
-        "widget_content": widget
+        # widget_content must be a JSON-encoded string, not a dict
+        "widget_content": json.dumps(widget)
     })
 
 
@@ -1012,7 +1013,7 @@ def handle_weather_command(content):
 
     return jsonify({
         "content": "",
-        "widget_content": {
+        "widget_content": json.dumps({
             "widget_type": "rich_embed",
             "extra_data": {
                 "title": f"Weather for {location}",
@@ -1027,7 +1028,7 @@ def handle_weather_command(content):
                     "text": "Weather data is simulated for testing"
                 }
             }
-        }
+        })
     })
 
 
@@ -1054,7 +1055,7 @@ def handle_inventory_command(content):
 
     return jsonify({
         "content": "",
-        "widget_content": {
+        "widget_content": json.dumps({
             "widget_type": "rich_embed",
             "extra_data": {
                 "title": f"Inventory Search: {search}",
@@ -1062,7 +1063,7 @@ def handle_inventory_command(content):
                 "color": 10181046,  # Purple
                 "fields": fields
             }
-        }
+        })
     })
 
 
@@ -1091,7 +1092,7 @@ def handle_echo_command(content, user):
     if response_type == 'widget':
         return jsonify({
             "content": "",
-            "widget_content": {
+            "widget_content": json.dumps({
                 "widget_type": "rich_embed",
                 "extra_data": {
                     "title": "Echo Widget",
@@ -1101,7 +1102,7 @@ def handle_echo_command(content, user):
                         "name": user.get('full_name', 'Unknown')
                     }
                 }
-            }
+            })
         })
 
     # Public (default)

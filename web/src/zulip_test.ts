@@ -6,7 +6,11 @@ export {set_wildcard_mention_threshold, wildcard_mention_threshold} from "./comp
 export {private_message_recipient_emails} from "./compose_state.ts";
 export {current as current_msg_list} from "./message_lists.ts";
 export {get_stream_id, get_sub, get_subscriber_count} from "./stream_data.ts";
-export {get_by_user_id as get_person_by_user_id, get_user_id_from_name} from "./people.ts";
+export {
+    get_by_user_id as get_person_by_user_id,
+    get_user_id_from_name,
+    get_bot_ids,
+} from "./people.ts";
 export {last_visible as last_visible_row, id as row_id} from "./rows.ts";
 export {cancel as cancel_compose} from "./compose_actions.ts";
 export {page_params, page_params_parse_time} from "./base_page_params.ts";
@@ -20,3 +24,5 @@ export {
     is_bot_connected,
     get_info as get_bot_presence_info,
 } from "./bot_presence.ts";
+export {redraw as redraw_buddy_list} from "./activity_ui.ts";
+export {get_user_circle_class} from "./buddy_data.ts";
