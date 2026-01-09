@@ -7,11 +7,76 @@ import type {Message} from "./message_store.ts";
 import type {Event} from "./widget_data.ts";
 import type {WidgetExtraData} from "./widgetize.ts";
 
+const dependency_schema = z.object({
+    url: z.string(),
+    type: z.enum(["script", "style"]),
+});
+
 export const freeform_extra_data_schema = z.object({
     html: z.string(),
     css: z.optional(z.string()),
     js: z.optional(z.string()),
+    // External dependencies loaded once and shared across all freeform widgets
+    dependencies: z.optional(z.array(dependency_schema)),
 });
+
+// Track loaded dependencies globally to avoid duplicate loading
+const loaded_dependencies = new Set<string>();
+const loading_dependencies = new Map<string, Promise<void>>();
+
+async function load_dependency(dep: {url: string; type: "script" | "style"}): Promise<void> {
+    // Already loaded
+    if (loaded_dependencies.has(dep.url)) {
+        return;
+    }
+
+    // Currently loading - wait for it
+    const existing = loading_dependencies.get(dep.url);
+    if (existing) {
+        return existing;
+    }
+
+    // Start loading
+    const promise = new Promise<void>((resolve, reject) => {
+        if (dep.type === "script") {
+            const script = document.createElement("script");
+            script.src = dep.url;
+            script.onload = (): void => {
+                loaded_dependencies.add(dep.url);
+                loading_dependencies.delete(dep.url);
+                resolve();
+            };
+            script.onerror = (): void => {
+                loading_dependencies.delete(dep.url);
+                reject(new Error(`Failed to load script: ${dep.url}`));
+            };
+            document.head.append(script);
+        } else {
+            const link = document.createElement("link");
+            link.rel = "stylesheet";
+            link.href = dep.url;
+            link.onload = (): void => {
+                loaded_dependencies.add(dep.url);
+                loading_dependencies.delete(dep.url);
+                resolve();
+            };
+            link.onerror = (): void => {
+                loading_dependencies.delete(dep.url);
+                reject(new Error(`Failed to load stylesheet: ${dep.url}`));
+            };
+            document.head.append(link);
+        }
+    });
+
+    loading_dependencies.set(dep.url, promise);
+    return promise;
+}
+
+async function load_all_dependencies(
+    deps: Array<{url: string; type: "script" | "style"}>,
+): Promise<void> {
+    await Promise.all(deps.map((dep) => load_dependency(dep)));
+}
 
 type WidgetContext = {
     message_id: number;
@@ -66,7 +131,7 @@ export function activate({
         });
     }
 
-    function render(): void {
+    async function render(): Promise<void> {
         // Create container with scoped class
         const $container = $(`<div class="widget-freeform ${widget_class}"></div>`);
 
@@ -83,6 +148,16 @@ export function activate({
 
         $elem.html("");
         $elem.append($container);
+
+        // Load external dependencies before executing JS
+        if (data.dependencies && data.dependencies.length > 0) {
+            try {
+                await load_all_dependencies(data.dependencies);
+            } catch (error) {
+                blueslip.error("Error loading freeform widget dependencies", {error});
+                return;
+            }
+        }
 
         // Execute JS if provided
         if (data.js) {
@@ -117,7 +192,7 @@ export function activate({
         }
     }
 
-    render();
+    void render();
 
     // Handle events - could be used for bot-initiated updates
     return (events: Event[]): void => {
@@ -140,7 +215,17 @@ export function activate({
                 if ("js" in event_data && typeof event_data.js === "string") {
                     data.js = event_data.js;
                 }
-                render();
+                // Update dependencies if provided
+                if (
+                    "dependencies" in event_data &&
+                    Array.isArray(event_data.dependencies)
+                ) {
+                    data.dependencies = event_data.dependencies as Array<{
+                        url: string;
+                        type: "script" | "style";
+                    }>;
+                }
+                void render();
             }
         }
     };

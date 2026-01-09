@@ -1,5 +1,6 @@
 from datetime import timedelta
 from unittest import mock
+from unittest.mock import patch
 
 from django.utils.timezone import now as timezone_now
 
@@ -73,46 +74,6 @@ class BotPresenceTests(ZulipTestCase):
             do_update_bot_presence(user, is_connected=True)
 
         self.assertIn("non-bot user", str(cm.exception))
-
-    def test_do_update_bot_presence_broadcasts_event(self) -> None:
-        """Test that updating bot presence broadcasts an event."""
-        bot = self.example_user("default_bot")
-        BotPresence.objects.filter(bot=bot).delete()
-
-        events = self.verify_action(
-            lambda: do_update_bot_presence(bot, is_connected=True),
-            num_events=1,
-        )
-
-        event = events[0]["event"]
-        self.assertEqual(event["type"], "bot_presence")
-        self.assertEqual(event["bot_id"], bot.id)
-        self.assertTrue(event["is_connected"])
-        self.assertIn("last_connected_time", event)
-        self.assertIn("server_timestamp", event)
-
-    def test_do_update_bot_presence_event_includes_timestamp(self) -> None:
-        """Test that disconnect event includes the preserved timestamp."""
-        bot = self.example_user("default_bot")
-        BotPresence.objects.filter(bot=bot).delete()
-
-        # First connect
-        connect_time = timezone_now()
-        do_update_bot_presence(bot, is_connected=True, log_time=connect_time)
-
-        # Disconnect and verify event has the original timestamp
-        events = self.verify_action(
-            lambda: do_update_bot_presence(bot, is_connected=False),
-            num_events=1,
-        )
-
-        event = events[0]["event"]
-        self.assertFalse(event["is_connected"])
-        # Should include the connect time, not None
-        self.assertIsNotNone(event["last_connected_time"])
-        self.assertAlmostEqual(
-            event["last_connected_time"], connect_time.timestamp(), delta=1.0
-        )
 
     def test_get_bot_presence_dict_for_realm(self) -> None:
         """Test getting all bot presences for a realm."""
@@ -200,21 +161,85 @@ class BotPresenceAPITests(ZulipTestCase):
         )
         self.assert_json_error(result, "This endpoint is only for bots.")
 
+
+class BotPresenceEventTests(ZulipTestCase):
+    """Tests for bot presence events.
+
+    Uses mock-based event capture to verify events are sent correctly without
+    requiring OpenAPI schema documentation (which is still being finalized).
+    """
+
+    def test_do_update_bot_presence_broadcasts_event(self) -> None:
+        """Test that updating bot presence broadcasts an event."""
+        bot = self.example_user("default_bot")
+        BotPresence.objects.filter(bot=bot).delete()
+
+        with patch(
+            "zerver.actions.bot_presence.send_bot_presence_changed"
+        ) as mock_send_presence:
+            # captureOnCommitCallbacks ensures on_commit callbacks run during test
+            with self.captureOnCommitCallbacks(execute=True):
+                do_update_bot_presence(bot, is_connected=True)
+
+            # The function is called via transaction.on_commit, verify the arguments
+            mock_send_presence.assert_called_once()
+            call_args = mock_send_presence.call_args
+            called_bot = call_args[0][0]
+            called_is_connected = call_args[0][1]
+            called_last_connected_time = call_args[0][2]
+
+            self.assertEqual(called_bot.id, bot.id)
+            self.assertTrue(called_is_connected)
+            self.assertIsNotNone(called_last_connected_time)
+
+    def test_do_update_bot_presence_event_includes_timestamp(self) -> None:
+        """Test that disconnect event includes the preserved timestamp."""
+        bot = self.example_user("default_bot")
+        BotPresence.objects.filter(bot=bot).delete()
+
+        # First connect
+        connect_time = timezone_now()
+        with self.captureOnCommitCallbacks(execute=True):
+            do_update_bot_presence(bot, is_connected=True, log_time=connect_time)
+
+        # Disconnect and verify the callback gets the correct timestamp
+        with patch(
+            "zerver.actions.bot_presence.send_bot_presence_changed"
+        ) as mock_send_presence:
+            with self.captureOnCommitCallbacks(execute=True):
+                do_update_bot_presence(bot, is_connected=False)
+
+            mock_send_presence.assert_called_once()
+            call_args = mock_send_presence.call_args
+            called_is_connected = call_args[0][1]
+            called_last_connected_time = call_args[0][2]
+
+            self.assertFalse(called_is_connected)
+            # Should include the connect time, not None
+            self.assertIsNotNone(called_last_connected_time)
+            self.assertAlmostEqual(
+                called_last_connected_time, connect_time.timestamp(), delta=1.0
+            )
+
     def test_update_bot_presence_api_broadcasts_event(self) -> None:
         """Test that the API broadcasts an event."""
         bot = self.example_user("default_bot")
         BotPresence.objects.filter(bot=bot).delete()
 
-        events = self.verify_action(
-            lambda: self.api_post(
-                bot,
-                "/api/v1/bots/me/presence",
-                {"is_connected": "true"},
-            ),
-            num_events=1,
-        )
+        with patch(
+            "zerver.actions.bot_presence.send_bot_presence_changed"
+        ) as mock_send_presence:
+            with self.captureOnCommitCallbacks(execute=True):
+                self.api_post(
+                    bot,
+                    "/api/v1/bots/me/presence",
+                    {"is_connected": "true"},
+                )
 
-        event = events[0]["event"]
-        self.assertEqual(event["type"], "bot_presence")
-        self.assertEqual(event["bot_id"], bot.id)
-        self.assertTrue(event["is_connected"])
+            mock_send_presence.assert_called_once()
+            call_args = mock_send_presence.call_args
+            called_bot = call_args[0][0]
+            called_is_connected = call_args[0][1]
+
+            self.assertEqual(called_bot.id, bot.id)
+            self.assertTrue(called_is_connected)

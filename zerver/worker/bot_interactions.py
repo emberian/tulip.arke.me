@@ -57,9 +57,7 @@ class BotInteractionWorker(QueueProcessingWorker):
         """
         services = get_bot_services(bot_profile.id)
         if not services:
-            logger.warning(
-                "Bot %s has no services configured for interactions", bot_profile.id
-            )
+            logger.warning("Bot %s has no services configured for interactions", bot_profile.id)
             return
 
         session = OutgoingSession(
@@ -127,9 +125,7 @@ class BotInteractionWorker(QueueProcessingWorker):
 
         services = get_bot_services(bot_profile.id)
         if not services:
-            logger.warning(
-                "Embedded bot %s has no services configured", bot_profile.id
-            )
+            logger.warning("Embedded bot %s has no services configured", bot_profile.id)
             return
 
         for service in services:
@@ -216,12 +212,14 @@ class BotInteractionWorker(QueueProcessingWorker):
                 message_id = message_info["id"]
 
                 # Create submessage with visibility constraint
-                submessage_content = json.dumps({
-                    "type": "bot_response",
-                    "interaction_id": event.get("interaction_id"),
-                    "content": response_json["content"],
-                    "widget_content": response_json.get("widget_content"),
-                })
+                submessage_content = json.dumps(
+                    {
+                        "type": "bot_response",
+                        "interaction_id": event.get("interaction_id"),
+                        "content": response_json["content"],
+                        "widget_content": response_json.get("widget_content"),
+                    }
+                )
 
                 do_add_submessage(
                     realm=bot_profile.realm,
@@ -231,9 +229,7 @@ class BotInteractionWorker(QueueProcessingWorker):
                     content=submessage_content,
                     visible_user_ids=visible_user_ids,
                 )
-                logger.info(
-                    "Created ephemeral/private submessage for interaction response"
-                )
+                logger.info("Created ephemeral/private submessage for interaction response")
                 return
 
             # Check if bot wants to send a public reply message
@@ -255,6 +251,12 @@ class BotInteractionWorker(QueueProcessingWorker):
                     message_to = [event["user"]["email"]]
                     topic_name = None
 
+                # widget_content must be a JSON string for check_send_message
+                # but bots may send it as an object for convenience
+                widget_content = response_json.get("widget_content")
+                if widget_content is not None and not isinstance(widget_content, str):
+                    widget_content = json.dumps(widget_content)
+
                 check_send_message(
                     sender=bot_profile,
                     client=client,
@@ -262,7 +264,7 @@ class BotInteractionWorker(QueueProcessingWorker):
                     message_to=message_to,
                     topic_name=topic_name,
                     message_content=response_json["content"],
-                    widget_content=response_json.get("widget_content"),
+                    widget_content=widget_content,
                     realm=bot_profile.realm,
                     skip_stream_access_check=True,
                 )
@@ -270,6 +272,4 @@ class BotInteractionWorker(QueueProcessingWorker):
         except json.JSONDecodeError:
             logger.debug("Bot response was not valid JSON, ignoring")
         except Exception as e:
-            logger.warning(
-                "Error processing bot interaction response: %s", e
-            )
+            logger.warning("Error processing bot interaction response: %s", e)
