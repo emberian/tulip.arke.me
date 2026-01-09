@@ -17,9 +17,11 @@ This guide covers Tulip's bot extensibility system, which enables bots to create
    - [Webhook Payload Format](#webhook-payload-format)
    - [Responding to Interactions](#responding-to-interactions)
 5. [Bot Presence](#bot-presence)
-6. [API Reference](#api-reference)
-7. [Security Model](#security-model)
-8. [Complete Examples](#complete-examples)
+6. [Sending Messages with Widgets](#sending-messages-with-widgets)
+7. [Puppeting](#puppeting)
+8. [API Reference](#api-reference)
+9. [Security Model](#security-model)
+10. [Complete Examples](#complete-examples)
 
 ---
 
@@ -576,12 +578,229 @@ Connected bots appear in the "Bots" section of the right sidebar with a green in
 
 ---
 
+## Sending Messages with Widgets
+
+Bots send messages with interactive widgets using the standard message sending API with an additional `widget_content` parameter.
+
+### API Endpoint
+
+**POST** `/api/v1/messages`
+
+### Authentication
+
+Use HTTP Basic Auth with your bot's email and API key:
+
+```bash
+curl -X POST https://your-tulip.com/api/v1/messages \
+  -u bot@example.com:BOT_API_KEY \
+  -d 'type=stream' \
+  -d 'to=general' \
+  -d 'topic=Bot Messages' \
+  -d 'content=Here is an interactive widget:' \
+  -d 'widget_content={"widget_type":"interactive","extra_data":{"content":"Click a button:","components":[{"type":"action_row","components":[{"type":"button","label":"Click Me","style":"primary","custom_id":"my_button"}]}]}}'
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `type` | string | Yes | `stream` or `direct` |
+| `to` | string/int | Yes | Stream name/ID or user IDs for direct messages |
+| `topic` | string | Yes* | Topic name (*required for stream messages) |
+| `content` | string | Yes | Message text content |
+| `widget_content` | string (JSON) | No | Widget definition (see [Widget Types](#widget-types)) |
+
+### Example: Sending a Button Widget
+
+```python
+import requests
+
+bot_email = "mybot@example.com"
+api_key = "your_api_key_here"
+
+widget = {
+    "widget_type": "interactive",
+    "extra_data": {
+        "content": "Approve this request?",
+        "components": [
+            {
+                "type": "action_row",
+                "components": [
+                    {
+                        "type": "button",
+                        "label": "Approve",
+                        "style": "success",
+                        "custom_id": "approve_123"
+                    },
+                    {
+                        "type": "button",
+                        "label": "Reject",
+                        "style": "danger",
+                        "custom_id": "reject_123"
+                    }
+                ]
+            }
+        ]
+    }
+}
+
+response = requests.post(
+    "https://your-tulip.com/api/v1/messages",
+    auth=(bot_email, api_key),
+    data={
+        "type": "stream",
+        "to": "general",
+        "topic": "Approvals",
+        "content": "New approval request:",
+        "widget_content": json.dumps(widget)
+    }
+)
+```
+
+### Response
+
+```json
+{
+  "result": "success",
+  "id": 12345,
+  "msg": ""
+}
+```
+
+The `id` is the message ID. When users interact with the widget, the interaction payload will include this message ID.
+
+### Important Notes
+
+1. **Interactions route to sender**: Widget interactions are sent to the bot that *sent* the message. If a user sends a widget message, interactions won't reach your bot.
+2. **Action rows required**: Buttons and select menus must be wrapped in an `action_row` component.
+3. **Webhook bots**: For outgoing webhook bots, interactions are delivered via HTTP POST to your webhook URL.
+
+---
+
+## Puppeting
+
+Puppeting allows bots to send messages that appear to come from other identities, such as characters in a game, external system users, or bridged chat participants. The message is still sent by the bot, but displays with a different name, avatar, and color.
+
+### Use Cases
+
+- **Chat bridges**: Display messages from Discord, Slack, or IRC with the original sender's identity
+- **Game bots**: Show character dialogue with character avatars
+- **Notification systems**: Display alerts with context-specific identities
+- **Role-playing**: Create immersive character interactions
+
+### Enabling Puppet Mode
+
+Puppet mode must be enabled on a per-channel basis by a channel administrator:
+
+1. Go to channel settings
+2. Enable "Puppet mode"
+3. Only trusted bots can send puppet messages
+
+### Puppet Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `puppet_display_name` | string | Yes | Name to display instead of bot name (max 100 chars) |
+| `puppet_avatar_url` | string | No | Avatar URL to display instead of bot avatar |
+| `puppet_color` | string | No | Hex color for the puppet's name (e.g., `#ff5733`) |
+
+### Example: Sending a Puppet Message
+
+```bash
+curl -X POST https://your-tulip.com/api/v1/messages \
+  -u bot@example.com:BOT_API_KEY \
+  -d 'type=stream' \
+  -d 'to=game-chat' \
+  -d 'topic=Adventure' \
+  -d 'content=You shall not pass!' \
+  -d 'puppet_display_name=Gandalf' \
+  -d 'puppet_avatar_url=https://example.com/gandalf.png' \
+  -d 'puppet_color=#808080'
+```
+
+```python
+import requests
+
+response = requests.post(
+    "https://your-tulip.com/api/v1/messages",
+    auth=("bot@example.com", "api_key"),
+    data={
+        "type": "stream",
+        "to": "game-chat",
+        "topic": "Adventure",
+        "content": "You shall not pass!",
+        "puppet_display_name": "Gandalf",
+        "puppet_avatar_url": "https://example.com/gandalf.png",
+        "puppet_color": "#808080"
+    }
+)
+```
+
+### How Puppet Messages Display
+
+When a puppet message is rendered:
+
+1. The **display name** shows `puppet_display_name` instead of the bot's name
+2. The **avatar** shows `puppet_avatar_url` if provided, otherwise the bot's avatar
+3. The **name color** uses `puppet_color` if provided
+4. Hovering over the message reveals the actual sending bot
+
+### Puppet Presence in Sidebar
+
+When bots send puppet messages, the puppet identities appear in a "Puppets" section in the right sidebar. This shows users which puppet characters are active in the channel.
+
+### Restrictions
+
+| Restriction | Details |
+|-------------|---------|
+| Channel only | Puppet messages cannot be sent to direct messages |
+| Puppet mode required | The target channel must have puppet mode enabled |
+| Bots only | Only bot accounts can send puppet messages |
+| URL validation | `puppet_avatar_url` must be a valid URL |
+
+### Combining Puppets with Widgets
+
+Puppets can send widget messages too:
+
+```python
+response = requests.post(
+    "https://your-tulip.com/api/v1/messages",
+    auth=("bot@example.com", "api_key"),
+    data={
+        "type": "stream",
+        "to": "game-chat",
+        "topic": "Adventure",
+        "content": "Choose your path:",
+        "puppet_display_name": "Quest Giver",
+        "puppet_avatar_url": "https://example.com/npc.png",
+        "widget_content": json.dumps({
+            "widget_type": "interactive",
+            "extra_data": {
+                "content": "",
+                "components": [{
+                    "type": "action_row",
+                    "components": [
+                        {"type": "button", "label": "Go North", "custom_id": "north"},
+                        {"type": "button", "label": "Go South", "custom_id": "south"}
+                    ]
+                }]
+            }
+        })
+    }
+)
+```
+
+When users click buttons on puppet messages, the interaction is still delivered to the bot that sent the message.
+
+---
+
 ## API Reference
 
 ### Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| `POST` | `/api/v1/messages` | Send a message (with optional widget/puppet) |
 | `POST` | `/json/bot_interactions` | Handle widget interaction |
 | `GET` | `/json/bot_commands` | List all registered commands |
 | `POST` | `/json/bot_commands/register` | Register a new command (bots only) |
