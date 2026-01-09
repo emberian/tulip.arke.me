@@ -684,6 +684,8 @@ def webhook():
         return handle_autocomplete(data)
     elif request_type == 'interaction':
         return handle_interaction(data)
+    elif request_type == 'command_invocation':
+        return handle_command_invocation(data)
     else:
         return handle_message(data)
 
@@ -711,6 +713,166 @@ def handle_autocomplete(data):
         ][:10]
 
     return jsonify({"choices": choices})
+
+
+def handle_command_invocation(data):
+    """Handle slash command invocations from the new invoke endpoint"""
+    command = data.get('command', '')
+    arguments = data.get('arguments', {})
+    user = data.get('user', {})
+    interaction_id = data.get('interaction_id')
+
+    logger.info(f"Command invocation: command={command}, arguments={arguments}, interaction_id={interaction_id}")
+
+    if command == 'testbot':
+        test_type = arguments.get('test', 'all')
+        return handle_testbot_invocation(test_type)
+
+    elif command == 'weather':
+        location = arguments.get('location', 'Unknown')
+        units = arguments.get('units', 'f')
+        return handle_weather_invocation(location, units)
+
+    elif command == 'inventory':
+        item = arguments.get('item', '')
+        return handle_inventory_invocation(item)
+
+    elif command == 'echo':
+        message = arguments.get('message', 'Hello!')
+        response_type = arguments.get('type', 'public')
+        return handle_echo_invocation(message, response_type, user)
+
+    else:
+        return jsonify({
+            "content": f"Unknown command: `/{command}`"
+        })
+
+
+def handle_testbot_invocation(test_type):
+    """Handle /testbot command invocation"""
+    widgets_to_send = []
+
+    if test_type in ['embed_basic', 'all']:
+        widgets_to_send.append(("Rich Embed (Basic)", create_rich_embed_basic()))
+
+    if test_type in ['embed_full', 'all']:
+        widgets_to_send.append(("Rich Embed (Full)", create_rich_embed_full()))
+
+    if test_type in ['buttons', 'all']:
+        widgets_to_send.append(("Button Styles", create_button_widget_all_styles()))
+
+    if test_type in ['approval', 'all']:
+        widgets_to_send.append(("Approval Workflow", create_approval_workflow()))
+
+    if test_type in ['select', 'all']:
+        widgets_to_send.append(("Select Menus", create_select_menu_widget()))
+
+    if test_type in ['modal', 'all']:
+        widgets_to_send.append(("Modal Forms", create_modal_button_widget()))
+
+    if test_type in ['freeform_counter', 'all']:
+        widgets_to_send.append(("Freeform Counter", create_freeform_counter()))
+
+    if test_type in ['freeform_poll', 'all']:
+        widgets_to_send.append(("Freeform Poll", create_freeform_poll()))
+
+    if not widgets_to_send:
+        return jsonify({
+            "content": f"Unknown test type: `{test_type}`"
+        })
+
+    name, widget = widgets_to_send[0]
+
+    return jsonify({
+        "content": f"**{name}** widget:" if len(widgets_to_send) == 1 else f"Showing **{name}** (1 of {len(widgets_to_send)}):",
+        "widget_content": json.dumps(widget)
+    })
+
+
+def handle_weather_invocation(location, units):
+    """Handle /weather command invocation"""
+    temp = 72 if units == 'f' else 22
+    unit_symbol = '°F' if units == 'f' else '°C'
+
+    return jsonify({
+        "content": "",
+        "widget_content": json.dumps({
+            "widget_type": "rich_embed",
+            "extra_data": {
+                "title": f"Weather for {location}",
+                "description": "Sunny with a chance of clouds",
+                "color": 16776960,
+                "fields": [
+                    {"name": "Temperature", "value": f"{temp}{unit_symbol}", "inline": True},
+                    {"name": "Humidity", "value": "45%", "inline": True},
+                    {"name": "Wind", "value": "5 mph", "inline": True}
+                ],
+                "footer": {
+                    "text": "Weather data is simulated for testing"
+                }
+            }
+        })
+    })
+
+
+def handle_inventory_invocation(search):
+    """Handle /inventory command invocation"""
+    matching_items = [
+        item for item in INVENTORY_ITEMS
+        if search.lower() in item['label'].lower() or search.lower() in item['value']
+    ]
+
+    if not matching_items:
+        return jsonify({
+            "content": f"No items found matching `{search}`"
+        })
+
+    fields = [
+        {"name": item['label'], "value": item['description'], "inline": True}
+        for item in matching_items[:9]
+    ]
+
+    return jsonify({
+        "content": "",
+        "widget_content": json.dumps({
+            "widget_type": "rich_embed",
+            "extra_data": {
+                "title": f"Inventory Search: {search}",
+                "description": f"Found {len(matching_items)} items",
+                "color": 10181046,
+                "fields": fields
+            }
+        })
+    })
+
+
+def handle_echo_invocation(message, response_type, user):
+    """Handle /echo command invocation"""
+    if response_type == 'ephemeral':
+        return jsonify({
+            "ephemeral": True,
+            "content": f"(Ephemeral) {message}"
+        })
+
+    if response_type == 'widget':
+        return jsonify({
+            "content": "",
+            "widget_content": json.dumps({
+                "widget_type": "rich_embed",
+                "extra_data": {
+                    "title": "Echo Widget",
+                    "description": message,
+                    "color": 3066993,
+                    "author": {
+                        "name": user.get('full_name', 'Unknown')
+                    }
+                }
+            })
+        })
+
+    return jsonify({
+        "content": message
+    })
 
 
 def handle_interaction(data):
