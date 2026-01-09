@@ -335,7 +335,7 @@ async function test_modal_widget(page: Page): Promise<void> {
     console.log("Modal widget test passed");
 }
 
-async function test_freeform_counter_widget(page: Page): Promise<void> {
+export async function test_freeform_counter_widget(page: Page): Promise<void> {
     console.log("Testing freeform counter widget...");
 
     const widget_content = {
@@ -400,7 +400,7 @@ async function test_freeform_counter_widget(page: Page): Promise<void> {
     console.log("Freeform counter widget test passed");
 }
 
-async function test_freeform_poll_widget(page: Page): Promise<void> {
+export async function test_freeform_poll_widget(page: Page): Promise<void> {
     console.log("Testing freeform poll widget...");
 
     const widget_content = {
@@ -468,8 +468,9 @@ async function advanced_bot_widgets_test(page: Page): Promise<void> {
     await test_approval_workflow(page);
     await test_modal_widget(page);
     // Note: Freeform widgets (test_freeform_counter_widget, test_freeform_poll_widget)
-    // require a trusted bot to send - they cannot be sent by regular users for security
-    // reasons (they execute arbitrary JS). These can only be tested via actual bot integration.
+    // are exported but not called here - they require a trusted bot to send.
+    // They cannot be sent by regular users for security reasons (they execute arbitrary JS).
+    // These can only be tested via actual bot integration.
 
     console.log("All advanced bot widget tests passed!");
 }

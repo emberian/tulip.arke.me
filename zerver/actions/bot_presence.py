@@ -75,16 +75,16 @@ def do_update_bot_presence(
     )
 
 
-def get_bot_presence_dict_for_realm(realm_id: int) -> dict[int, dict[str, bool | float | None]]:
+def get_bot_presence_dict_for_realm(realm_id: int) -> dict[str, dict[str, bool | float | None]]:
     """Get presence data for all bots in a realm.
 
-    Returns a dict mapping bot_id -> presence info.
+    Returns a dict mapping bot_id (as string) -> presence info.
     """
     presences = BotPresence.objects.filter(realm_id=realm_id).select_related("bot")
 
-    result: dict[int, dict[str, bool | float | None]] = {}
+    result: dict[str, dict[str, bool | float | None]] = {}
     for presence in presences:
-        result[presence.bot_id] = {
+        result[str(presence.bot_id)] = {
             "is_connected": presence.is_connected,
             "last_connected_time": (
                 presence.last_connected_time.timestamp()

@@ -7,6 +7,7 @@ import render_topic_typeahead_hint from "../templates/topic_typeahead_hint.hbs";
 import {MAX_ITEMS, Typeahead} from "./bootstrap_typeahead.ts";
 import type {TypeaheadInputElement} from "./bootstrap_typeahead.ts";
 import * as bot_command_store from "./bot_command_store.ts";
+import * as bot_presence from "./bot_presence.ts";
 import * as bulleted_numbered_list_util from "./bulleted_numbered_list_util.ts";
 import * as compose_pm_pill from "./compose_pm_pill.ts";
 import * as compose_state from "./compose_state.ts";
@@ -1070,13 +1071,16 @@ export function get_candidates(
             ? all_slash_commands
             : slash_commands;
 
-        // Convert bot commands to SlashCommand format
-        const bot_commands: SlashCommand[] = bot_command_store.get_commands().map((cmd) => ({
-            text: `/${cmd.name}`,
-            name: cmd.name,
-            info: `${cmd.description} (${cmd.bot_name})`,
-            aliases: "",
-        }));
+        // Convert bot commands to SlashCommand format, filtering out offline bots
+        const bot_commands: SlashCommand[] = bot_command_store
+            .get_commands()
+            .filter((cmd) => bot_presence.is_bot_connected(cmd.bot_id))
+            .map((cmd) => ({
+                text: `/${cmd.name}`,
+                name: cmd.name,
+                info: `${cmd.description} (${cmd.bot_name})`,
+                aliases: "",
+            }));
 
         return [...built_in_commands, ...bot_commands];
     }

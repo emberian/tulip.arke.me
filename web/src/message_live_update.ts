@@ -83,7 +83,7 @@ export function update_avatar(user_id: number, avatar_url: string | null): void 
     rerender_messages_view_for_user(user_id);
 }
 
-export function update_user_color(user_id: number, color: string | null): void {
+export function update_user_color(user_id: number, _color: string | null): void {
     // Rerender messages to update sender colors and mentions
     rerender_messages_view_for_user(user_id);
 }

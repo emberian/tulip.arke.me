@@ -383,10 +383,13 @@ def fetch_initial_state_data(
                 history_limit_days=presence_history_limit_days,
                 requesting_user_profile=user_profile,
             )
-            state["presences"] = presences
-            state["presence_last_update_id"] = presence_last_update_id_fetched_by_server
         else:
-            state["presences"] = {}
+            presences = {}
+            presence_last_update_id_fetched_by_server = None
+
+        state["presences"] = presences
+        if presence_last_update_id_fetched_by_server is not None:
+            state["presence_last_update_id"] = presence_last_update_id_fetched_by_server
 
         # Add bot presences
         from zerver.actions.bot_presence import get_bot_presence_dict_for_realm

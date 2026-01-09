@@ -129,7 +129,7 @@ def queue_bot_interaction_event(
         },
     }
 
-    # Send event to bot via websocket (bot can subscribe to bot_interaction events)
+    # Send event to bot via event queue (bot can subscribe to bot_interaction events)
     send_event(bot.realm, event, [bot.id])
 
     # Also queue for webhook delivery (for bots that use webhook-based delivery)

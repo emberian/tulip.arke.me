@@ -589,6 +589,7 @@ export class MessageListView {
         sender_is_bot: boolean;
         sender_is_guest: boolean;
         sender_is_deactivated: boolean;
+        sender_color: string | null;
         should_add_guest_indicator_for_sender: boolean;
         is_hidden: boolean;
         mention_classname: string | undefined;
