@@ -673,7 +673,7 @@ def build_message_send_dict(
         from zerver.lib.message import get_whisper_visible_user_ids
 
         whisper_visible_user_ids = get_whisper_visible_user_ids(
-            message.whisper_recipients, message.sender_id
+            message.whisper_recipients, message.sender_id, stream
         )
         assert whisper_visible_user_ids is not None
 
@@ -1508,6 +1508,7 @@ def check_send_message(
     puppet_color: str | None = None,
     whisper_to_user_ids: list[int] | None = None,
     whisper_to_group_ids: list[int] | None = None,
+    whisper_to_puppet_ids: list[int] | None = None,
 ) -> SentMessageResult:
     addressee = Addressee.legacy_build(sender, recipient_type_name, message_to, topic_name)
     message_request = check_message(
@@ -1528,6 +1529,7 @@ def check_send_message(
         puppet_color=puppet_color,
         whisper_to_user_ids=whisper_to_user_ids,
         whisper_to_group_ids=whisper_to_group_ids,
+        whisper_to_puppet_ids=whisper_to_puppet_ids,
     )
     return do_send_messages(
         [message_request],
@@ -1811,6 +1813,7 @@ def check_message(
     puppet_color: str | None = None,
     whisper_to_user_ids: list[int] | None = None,
     whisper_to_group_ids: list[int] | None = None,
+    whisper_to_puppet_ids: list[int] | None = None,
 ) -> SendMessageRequest:
     """See
     https://zulip.readthedocs.io/en/latest/subsystems/sending-messages.html
@@ -1944,7 +1947,11 @@ def check_message(
     message.puppet_avatar_url = puppet_avatar_url
 
     # Set whisper recipients if provided
-    if whisper_to_user_ids is not None or whisper_to_group_ids is not None:
+    if (
+        whisper_to_user_ids is not None
+        or whisper_to_group_ids is not None
+        or whisper_to_puppet_ids is not None
+    ):
         # Validate that whispers are only sent to channel messages
         if not addressee.is_stream():
             raise JsonableError(_("Whispers can only be sent in channels"))
@@ -1975,6 +1982,28 @@ def check_message(
             if len(valid_group_ids) != len(whisper_to_group_ids):
                 raise JsonableError(_("Invalid whisper recipient group IDs"))
             whisper_recipients["group_ids"] = whisper_to_group_ids
+
+        if whisper_to_puppet_ids:
+            # Validate puppet IDs exist in this stream
+            from zerver.models.streams import StreamPuppet
+
+            assert stream is not None  # Already validated we're in a stream
+
+            # Check each puppet ID for validity
+            for puppet_id in whisper_to_puppet_ids:
+                try:
+                    puppet = StreamPuppet.objects.get(id=puppet_id)
+                    if puppet.stream_id != stream.id:
+                        raise JsonableError(
+                            _("Puppet {puppet_id} does not belong to this channel").format(
+                                puppet_id=puppet_id
+                            )
+                        )
+                except StreamPuppet.DoesNotExist:
+                    raise JsonableError(
+                        _("Invalid puppet ID: {puppet_id}").format(puppet_id=puppet_id)
+                    )
+            whisper_recipients["puppet_ids"] = whisper_to_puppet_ids
 
         message.whisper_recipients = whisper_recipients
 
@@ -2056,6 +2085,9 @@ def _internal_prep_message(
     forged_timestamp: float | None = None,
     archived_channel_notice: bool = False,
     acting_user: UserProfile | None = None,
+    puppet_display_name: str | None = None,
+    puppet_avatar_url: str | None = None,
+    puppet_color: str | None = None,
 ) -> SendMessageRequest | None:
     """
     Create a message object and checks it, but doesn't send it or save it to the database.
@@ -2089,6 +2121,9 @@ def _internal_prep_message(
             forged_timestamp=forged_timestamp,
             archived_channel_notice=archived_channel_notice,
             acting_user=acting_user,
+            puppet_display_name=puppet_display_name,
+            puppet_avatar_url=puppet_avatar_url,
+            puppet_color=puppet_color,
         )
     except JsonableError as e:
         logging.exception(
@@ -2142,6 +2177,10 @@ def internal_prep_stream_message_by_name(
     stream_name: str,
     topic_name: str,
     content: str,
+    *,
+    puppet_display_name: str | None = None,
+    puppet_avatar_url: str | None = None,
+    puppet_color: str | None = None,
 ) -> SendMessageRequest | None:
     """
     See _internal_prep_message for details of how this works.
@@ -2153,6 +2192,9 @@ def internal_prep_stream_message_by_name(
         sender=sender,
         addressee=addressee,
         content=content,
+        puppet_display_name=puppet_display_name,
+        puppet_avatar_url=puppet_avatar_url,
+        puppet_color=puppet_color,
     )
 
 
@@ -2248,6 +2290,10 @@ def internal_send_stream_message_by_name(
     stream_name: str,
     topic_name: str,
     content: str,
+    *,
+    puppet_display_name: str | None = None,
+    puppet_avatar_url: str | None = None,
+    puppet_color: str | None = None,
 ) -> int | None:
     message_request = internal_prep_stream_message_by_name(
         realm,
@@ -2255,6 +2301,9 @@ def internal_send_stream_message_by_name(
         stream_name,
         topic_name,
         content,
+        puppet_display_name=puppet_display_name,
+        puppet_avatar_url=puppet_avatar_url,
+        puppet_color=puppet_color,
     )
 
     if message_request is None:

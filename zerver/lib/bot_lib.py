@@ -140,6 +140,62 @@ class EmbeddedBotHandler:
             )
         return {"id": result["id"]}
 
+    def send_message_as_puppet(
+        self,
+        message: dict[str, Any],
+        puppet_name: str,
+        puppet_avatar_url: str | None = None,
+        puppet_color: str | None = None,
+    ) -> dict[str, Any]:
+        """Send a stream message as a puppet character.
+
+        The bot must be in a stream that has puppet mode enabled.
+        """
+        if not self._rate_limit.is_legal():
+            self._rate_limit.show_error_and_exit()
+
+        if message["type"] != "stream":
+            raise ValueError(_("Puppet messages can only be sent to streams"))
+
+        message_id = internal_send_stream_message_by_name(
+            self.user_profile.realm,
+            self.user_profile,
+            message["to"],
+            message["topic"],
+            message["content"],
+            puppet_display_name=puppet_name,
+            puppet_avatar_url=puppet_avatar_url,
+            puppet_color=puppet_color,
+        )
+        return {"id": message_id}
+
+    def send_reply_as_puppet(
+        self,
+        message: dict[str, Any],
+        response: str,
+        puppet_name: str,
+        puppet_avatar_url: str | None = None,
+        puppet_color: str | None = None,
+    ) -> dict[str, Any]:
+        """Reply to a stream message as a puppet character.
+
+        The bot must be in a stream that has puppet mode enabled.
+        """
+        if message["type"] != "stream":
+            raise ValueError(_("Puppet replies can only be sent to streams"))
+
+        return self.send_message_as_puppet(
+            dict(
+                type="stream",
+                to=message["display_recipient"],
+                topic=get_topic_from_message_info(message),
+                content=response,
+            ),
+            puppet_name=puppet_name,
+            puppet_avatar_url=puppet_avatar_url,
+            puppet_color=puppet_color,
+        )
+
     def update_message(self, message: dict[str, Any]) -> None:
         pass  # Not implemented
 

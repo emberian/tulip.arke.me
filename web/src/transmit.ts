@@ -24,6 +24,7 @@ type SendMessageData = {
     // These are JSON-stringified arrays since the backend expects Json[list[int]]
     whisper_to_user_ids?: string;
     whisper_to_group_ids?: string;
+    whisper_to_puppet_ids?: string;
 } & (
     | {
           type: "stream";

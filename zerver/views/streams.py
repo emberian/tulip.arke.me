@@ -1439,3 +1439,176 @@ def get_stream_puppets(
 
     puppets = get_stream_puppets(stream)
     return json_success(request, data={"puppets": puppets})
+
+
+@typed_endpoint
+def get_puppet_handlers(
+    request: HttpRequest,
+    user_profile: UserProfile,
+    *,
+    stream_id: Annotated[NonNegativeInt, ApiParamConfig("stream_id", path_only=True)],
+    puppet_id: Annotated[NonNegativeInt, ApiParamConfig("puppet_id", path_only=True)],
+) -> HttpResponse:
+    """Get all handlers for a puppet."""
+    from zerver.models.streams import PuppetHandler, StreamPuppet
+
+    (stream, _sub) = access_stream_by_id(user_profile, stream_id)
+
+    if not stream.enable_puppet_mode:
+        raise JsonableError(_("Puppet mode is not enabled for this channel"))
+
+    try:
+        puppet = StreamPuppet.objects.get(id=puppet_id, stream=stream)
+    except StreamPuppet.DoesNotExist:
+        raise JsonableError(_("Puppet not found"))
+
+    handlers = PuppetHandler.objects.filter(puppet=puppet).select_related("handler")
+    return json_success(
+        request,
+        data={
+            "puppet": {
+                "id": puppet.id,
+                "name": puppet.name,
+                "visibility_mode": puppet.visibility_mode,
+                "recent_handler_window_hours": puppet.recent_handler_window_hours,
+            },
+            "handlers": [
+                {
+                    "user_id": h.handler.id,
+                    "handler_type": h.handler_type,
+                    "last_used": h.last_used.isoformat(),
+                }
+                for h in handlers
+            ],
+        },
+    )
+
+
+@typed_endpoint
+def claim_puppet_handler(
+    request: HttpRequest,
+    user_profile: UserProfile,
+    *,
+    stream_id: Annotated[NonNegativeInt, ApiParamConfig("stream_id", path_only=True)],
+    puppet_id: Annotated[NonNegativeInt, ApiParamConfig("puppet_id", path_only=True)],
+    user_id: int | None = None,
+) -> HttpResponse:
+    """Claim a puppet for receiving whispers. Admins can claim for other users."""
+    from zerver.actions.stream_puppets import claim_puppet
+    from zerver.models.streams import StreamPuppet
+
+    (stream, _sub) = access_stream_by_id(user_profile, stream_id)
+
+    if not stream.enable_puppet_mode:
+        raise JsonableError(_("Puppet mode is not enabled for this channel"))
+
+    try:
+        puppet = StreamPuppet.objects.get(id=puppet_id, stream=stream)
+    except StreamPuppet.DoesNotExist:
+        raise JsonableError(_("Puppet not found"))
+
+    # Determine who to claim for
+    if user_id is not None:
+        # Admin claiming for another user
+        if not user_profile.is_realm_admin:
+            raise JsonableError(_("Only realm admins can claim puppets for other users"))
+        try:
+            target_user = UserProfile.objects.get(id=user_id, realm=user_profile.realm)
+        except UserProfile.DoesNotExist:
+            raise JsonableError(_("Invalid user ID"))
+    else:
+        target_user = user_profile
+
+    handler = claim_puppet(puppet, target_user)
+    return json_success(
+        request,
+        data={
+            "handler": {
+                "user_id": handler.handler.id,
+                "handler_type": handler.handler_type,
+                "last_used": handler.last_used.isoformat(),
+            }
+        },
+    )
+
+
+@typed_endpoint
+def unclaim_puppet_handler(
+    request: HttpRequest,
+    user_profile: UserProfile,
+    *,
+    stream_id: Annotated[NonNegativeInt, ApiParamConfig("stream_id", path_only=True)],
+    puppet_id: Annotated[NonNegativeInt, ApiParamConfig("puppet_id", path_only=True)],
+    handler_user_id: Annotated[NonNegativeInt, ApiParamConfig("user_id", path_only=True)],
+) -> HttpResponse:
+    """Remove a claimed handler from a puppet."""
+    from zerver.actions.stream_puppets import unclaim_puppet
+    from zerver.models.streams import StreamPuppet
+
+    (stream, _sub) = access_stream_by_id(user_profile, stream_id)
+
+    if not stream.enable_puppet_mode:
+        raise JsonableError(_("Puppet mode is not enabled for this channel"))
+
+    try:
+        puppet = StreamPuppet.objects.get(id=puppet_id, stream=stream)
+    except StreamPuppet.DoesNotExist:
+        raise JsonableError(_("Puppet not found"))
+
+    # Only allow unclaiming self or if admin
+    if handler_user_id != user_profile.id and not user_profile.is_realm_admin:
+        raise JsonableError(_("You can only unclaim puppets for yourself"))
+
+    try:
+        target_user = UserProfile.objects.get(id=handler_user_id, realm=user_profile.realm)
+    except UserProfile.DoesNotExist:
+        raise JsonableError(_("Invalid user ID"))
+
+    deleted = unclaim_puppet(puppet, target_user)
+    if not deleted:
+        raise JsonableError(_("User is not a claimed handler for this puppet"))
+
+    return json_success(request)
+
+
+@typed_endpoint
+def update_puppet_visibility(
+    request: HttpRequest,
+    user_profile: UserProfile,
+    *,
+    stream_id: Annotated[NonNegativeInt, ApiParamConfig("stream_id", path_only=True)],
+    puppet_id: Annotated[NonNegativeInt, ApiParamConfig("puppet_id", path_only=True)],
+    visibility_mode: Literal["open", "claimed"],
+    recent_handler_window_hours: int | None = None,
+) -> HttpResponse:
+    """Update puppet visibility mode. Only admins or the puppet creator can do this."""
+    from zerver.actions.stream_puppets import set_puppet_visibility
+    from zerver.models.streams import StreamPuppet
+
+    (stream, _sub) = access_stream_by_id(user_profile, stream_id)
+
+    if not stream.enable_puppet_mode:
+        raise JsonableError(_("Puppet mode is not enabled for this channel"))
+
+    try:
+        puppet = StreamPuppet.objects.get(id=puppet_id, stream=stream)
+    except StreamPuppet.DoesNotExist:
+        raise JsonableError(_("Puppet not found"))
+
+    # Only admins or the puppet creator can change visibility
+    if not user_profile.is_realm_admin and puppet.created_by_id != user_profile.id:
+        raise JsonableError(_("Only realm admins or the puppet creator can change visibility"))
+
+    set_puppet_visibility(puppet, visibility_mode, recent_handler_window_hours)
+
+    return json_success(
+        request,
+        data={
+            "puppet": {
+                "id": puppet.id,
+                "name": puppet.name,
+                "visibility_mode": puppet.visibility_mode,
+                "recent_handler_window_hours": puppet.recent_handler_window_hours,
+            }
+        },
+    )

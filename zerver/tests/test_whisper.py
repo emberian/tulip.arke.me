@@ -412,3 +412,424 @@ class WhisperGroupDynamicAccessTest(ZulipTestCase):
         # Now new_member can access the message
         result = self.client_get(f"/json/messages/{message_id}")
         self.assert_json_success(result)
+
+
+class WhisperToPuppetTest(ZulipTestCase):
+    """Tests for whispered messages to puppets."""
+
+    def test_send_whisper_to_puppet_with_claimed_handler(self) -> None:
+        """Test that whisper to puppet reaches claimed handler."""
+        from zerver.actions.stream_puppets import claim_puppet
+        from zerver.models.streams import PuppetHandler, StreamPuppet
+
+        sender = self.example_user("hamlet")
+        handler = self.example_user("cordelia")
+        non_handler = self.example_user("othello")
+
+        stream_name = "Verona"
+        for user in [sender, handler, non_handler]:
+            self.subscribe(user, stream_name)
+
+        stream = self.get_stream(stream_name, sender.realm)
+        stream.enable_puppet_mode = True
+        stream.save()
+
+        # Create a puppet and claim it
+        puppet = StreamPuppet.objects.create(
+            stream=stream,
+            name="Gandalf",
+            avatar_url="https://example.com/gandalf.png",
+            created_by=sender,
+            visibility_mode=StreamPuppet.VISIBILITY_CLAIMED,
+        )
+        claim_puppet(puppet, handler)
+
+        # Send whisper to the puppet
+        self.login_user(sender)
+        result = self.client_post(
+            "/json/messages",
+            {
+                "type": "stream",
+                "to": orjson.dumps(stream_name).decode(),
+                "content": "Secret message for Gandalf",
+                "topic": "whisper test",
+                "whisper_to_puppet_ids": orjson.dumps([puppet.id]).decode(),
+            },
+        )
+        self.assert_json_success(result)
+        message_id = orjson.loads(result.content)["id"]
+
+        # Sender should have UserMessage
+        self.assertTrue(
+            UserMessage.objects.filter(user_profile=sender, message_id=message_id).exists()
+        )
+
+        # Handler should have UserMessage
+        self.assertTrue(
+            UserMessage.objects.filter(user_profile=handler, message_id=message_id).exists()
+        )
+
+        # Non-handler should NOT have UserMessage
+        self.assertFalse(
+            UserMessage.objects.filter(user_profile=non_handler, message_id=message_id).exists()
+        )
+
+    def test_send_whisper_to_open_puppet_recent_handler(self) -> None:
+        """Test that whisper to open puppet reaches recent handlers."""
+        from zerver.models.streams import PuppetHandler, StreamPuppet
+
+        sender = self.example_user("hamlet")
+        recent_user = self.example_user("cordelia")
+        non_recent = self.example_user("othello")
+
+        stream_name = "Verona"
+        for user in [sender, recent_user, non_recent]:
+            self.subscribe(user, stream_name)
+
+        stream = self.get_stream(stream_name, sender.realm)
+        stream.enable_puppet_mode = True
+        stream.save()
+
+        # Create an open puppet
+        puppet = StreamPuppet.objects.create(
+            stream=stream,
+            name="Gandalf",
+            created_by=sender,
+            visibility_mode=StreamPuppet.VISIBILITY_OPEN,
+            recent_handler_window_hours=24,
+        )
+
+        # Create a recent handler (simulating recent activity)
+        PuppetHandler.objects.create(
+            puppet=puppet,
+            handler=recent_user,
+            handler_type=PuppetHandler.HANDLER_TYPE_RECENT,
+        )
+
+        # Send whisper to the puppet
+        self.login_user(sender)
+        result = self.client_post(
+            "/json/messages",
+            {
+                "type": "stream",
+                "to": orjson.dumps(stream_name).decode(),
+                "content": "Secret message for Gandalf",
+                "topic": "whisper test",
+                "whisper_to_puppet_ids": orjson.dumps([puppet.id]).decode(),
+            },
+        )
+        self.assert_json_success(result)
+        message_id = orjson.loads(result.content)["id"]
+
+        # Recent handler should have UserMessage
+        self.assertTrue(
+            UserMessage.objects.filter(user_profile=recent_user, message_id=message_id).exists()
+        )
+
+        # Non-recent user should NOT have UserMessage
+        self.assertFalse(
+            UserMessage.objects.filter(user_profile=non_recent, message_id=message_id).exists()
+        )
+
+    def test_whisper_to_puppet_metadata_stored(self) -> None:
+        """Test that puppet_ids are stored in whisper_recipients."""
+        from zerver.actions.stream_puppets import claim_puppet
+        from zerver.models.streams import StreamPuppet
+
+        sender = self.example_user("hamlet")
+        handler = self.example_user("cordelia")
+
+        stream_name = "Verona"
+        for user in [sender, handler]:
+            self.subscribe(user, stream_name)
+
+        stream = self.get_stream(stream_name, sender.realm)
+        stream.enable_puppet_mode = True
+        stream.save()
+
+        puppet = StreamPuppet.objects.create(
+            stream=stream,
+            name="Gandalf",
+            created_by=sender,
+            visibility_mode=StreamPuppet.VISIBILITY_CLAIMED,
+        )
+        claim_puppet(puppet, handler)
+
+        self.login_user(sender)
+        result = self.client_post(
+            "/json/messages",
+            {
+                "type": "stream",
+                "to": orjson.dumps(stream_name).decode(),
+                "content": "Whisper with puppet metadata",
+                "topic": "whisper test",
+                "whisper_to_puppet_ids": orjson.dumps([puppet.id]).decode(),
+            },
+        )
+        self.assert_json_success(result)
+        message_id = orjson.loads(result.content)["id"]
+
+        message = Message.objects.get(id=message_id)
+        self.assertIsNotNone(message.whisper_recipients)
+        self.assertIn("puppet_ids", message.whisper_recipients)
+        self.assertEqual(message.whisper_recipients["puppet_ids"], [puppet.id])
+
+    def test_whisper_to_users_groups_and_puppets(self) -> None:
+        """Test sending a whisper to users, groups, and puppets simultaneously."""
+        from zerver.actions.stream_puppets import claim_puppet
+        from zerver.models.streams import StreamPuppet
+
+        sender = self.example_user("hamlet")
+        direct_recipient = self.example_user("cordelia")
+        group_member = self.example_user("iago")
+        puppet_handler = self.example_user("prospero")
+        non_recipient = self.example_user("othello")
+
+        stream_name = "Verona"
+        for user in [sender, direct_recipient, group_member, puppet_handler, non_recipient]:
+            self.subscribe(user, stream_name)
+
+        stream = self.get_stream(stream_name, sender.realm)
+        stream.enable_puppet_mode = True
+        stream.save()
+
+        # Create a user group
+        user_group = check_add_user_group(
+            sender.realm, "whisper_puppet_group", [group_member], acting_user=sender
+        )
+
+        # Create a puppet
+        puppet = StreamPuppet.objects.create(
+            stream=stream,
+            name="Gandalf",
+            created_by=sender,
+            visibility_mode=StreamPuppet.VISIBILITY_CLAIMED,
+        )
+        claim_puppet(puppet, puppet_handler)
+
+        self.login_user(sender)
+        result = self.client_post(
+            "/json/messages",
+            {
+                "type": "stream",
+                "to": orjson.dumps(stream_name).decode(),
+                "content": "Whisper to all types",
+                "topic": "whisper test",
+                "whisper_to_user_ids": orjson.dumps([direct_recipient.id]).decode(),
+                "whisper_to_group_ids": orjson.dumps([user_group.id]).decode(),
+                "whisper_to_puppet_ids": orjson.dumps([puppet.id]).decode(),
+            },
+        )
+        self.assert_json_success(result)
+        message_id = orjson.loads(result.content)["id"]
+
+        # All intended recipients should have UserMessage
+        for user in [sender, direct_recipient, group_member, puppet_handler]:
+            self.assertTrue(
+                UserMessage.objects.filter(user_profile=user, message_id=message_id).exists(),
+                f"{user.email} should have received the whisper",
+            )
+
+        # Non-recipient should NOT have UserMessage
+        self.assertFalse(
+            UserMessage.objects.filter(user_profile=non_recipient, message_id=message_id).exists()
+        )
+
+    def test_invalid_puppet_id_rejected(self) -> None:
+        """Test that invalid puppet IDs are rejected."""
+        sender = self.example_user("hamlet")
+
+        stream_name = "Verona"
+        self.subscribe(sender, stream_name)
+
+        stream = self.get_stream(stream_name, sender.realm)
+        stream.enable_puppet_mode = True
+        stream.save()
+
+        self.login_user(sender)
+        result = self.client_post(
+            "/json/messages",
+            {
+                "type": "stream",
+                "to": orjson.dumps(stream_name).decode(),
+                "content": "Whisper to invalid puppet",
+                "topic": "whisper test",
+                "whisper_to_puppet_ids": orjson.dumps([99999]).decode(),
+            },
+        )
+        self.assert_json_error(result, "Invalid puppet ID: 99999")
+
+    def test_puppet_from_different_stream_rejected(self) -> None:
+        """Test that puppet IDs from a different stream are rejected."""
+        from zerver.models.streams import StreamPuppet
+
+        sender = self.example_user("hamlet")
+
+        stream1_name = "Verona"
+        stream2_name = "Denmark"
+        self.subscribe(sender, stream1_name)
+        self.subscribe(sender, stream2_name)
+
+        stream1 = self.get_stream(stream1_name, sender.realm)
+        stream1.puppets_enabled = True
+        stream1.save()
+
+        stream2 = self.get_stream(stream2_name, sender.realm)
+        stream2.puppets_enabled = True
+        stream2.save()
+
+        # Create puppet in stream2
+        puppet = StreamPuppet.objects.create(
+            stream=stream2,
+            name="Gandalf",
+            created_by=sender,
+        )
+
+        # Try to whisper to that puppet in stream1
+        self.login_user(sender)
+        result = self.client_post(
+            "/json/messages",
+            {
+                "type": "stream",
+                "to": orjson.dumps(stream1_name).decode(),
+                "content": "Whisper to puppet from different stream",
+                "topic": "whisper test",
+                "whisper_to_puppet_ids": orjson.dumps([puppet.id]).decode(),
+            },
+        )
+        self.assert_json_error(result, f"Puppet {puppet.id} does not belong to this channel")
+
+
+class PuppetHandlerAPITest(ZulipTestCase):
+    """Tests for puppet handler management APIs."""
+
+    def test_claim_puppet(self) -> None:
+        """Test claiming a puppet via API."""
+        from zerver.models.streams import PuppetHandler, StreamPuppet
+
+        user = self.example_user("hamlet")
+        self.login_user(user)
+
+        stream_name = "Verona"
+        self.subscribe(user, stream_name)
+
+        stream = self.get_stream(stream_name, user.realm)
+        stream.enable_puppet_mode = True
+        stream.save()
+
+        puppet = StreamPuppet.objects.create(
+            stream=stream,
+            name="Gandalf",
+            created_by=user,
+        )
+
+        result = self.client_post(
+            f"/json/streams/{stream.id}/puppets/{puppet.id}/handlers",
+        )
+        self.assert_json_success(result)
+
+        # Verify handler was created
+        self.assertTrue(
+            PuppetHandler.objects.filter(
+                puppet=puppet,
+                handler=user,
+                handler_type=PuppetHandler.HANDLER_TYPE_CLAIMED,
+            ).exists()
+        )
+
+    def test_unclaim_puppet(self) -> None:
+        """Test unclaiming a puppet via API."""
+        from zerver.actions.stream_puppets import claim_puppet
+        from zerver.models.streams import PuppetHandler, StreamPuppet
+
+        user = self.example_user("hamlet")
+        self.login_user(user)
+
+        stream_name = "Verona"
+        self.subscribe(user, stream_name)
+
+        stream = self.get_stream(stream_name, user.realm)
+        stream.enable_puppet_mode = True
+        stream.save()
+
+        puppet = StreamPuppet.objects.create(
+            stream=stream,
+            name="Gandalf",
+            created_by=user,
+        )
+        claim_puppet(puppet, user)
+
+        result = self.client_delete(
+            f"/json/streams/{stream.id}/puppets/{puppet.id}/handlers/{user.id}",
+        )
+        self.assert_json_success(result)
+
+        # Verify handler was removed
+        self.assertFalse(
+            PuppetHandler.objects.filter(
+                puppet=puppet,
+                handler=user,
+            ).exists()
+        )
+
+    def test_set_puppet_visibility_mode(self) -> None:
+        """Test setting puppet visibility mode via API."""
+        from zerver.models.streams import StreamPuppet
+
+        user = self.example_user("hamlet")
+        self.login_user(user)
+
+        stream_name = "Verona"
+        self.subscribe(user, stream_name)
+
+        stream = self.get_stream(stream_name, user.realm)
+        stream.enable_puppet_mode = True
+        stream.save()
+
+        puppet = StreamPuppet.objects.create(
+            stream=stream,
+            name="Gandalf",
+            created_by=user,
+            visibility_mode=StreamPuppet.VISIBILITY_OPEN,
+        )
+
+        result = self.client_patch(
+            f"/json/streams/{stream.id}/puppets/{puppet.id}/visibility",
+            {"visibility_mode": "claimed"},
+        )
+        self.assert_json_success(result)
+
+        puppet.refresh_from_db()
+        self.assertEqual(puppet.visibility_mode, StreamPuppet.VISIBILITY_CLAIMED)
+
+    def test_get_puppet_handlers(self) -> None:
+        """Test getting puppet handlers via API."""
+        from zerver.actions.stream_puppets import claim_puppet
+        from zerver.models.streams import StreamPuppet
+
+        user = self.example_user("hamlet")
+        handler = self.example_user("cordelia")
+        self.login_user(user)
+
+        stream_name = "Verona"
+        self.subscribe(user, stream_name)
+        self.subscribe(handler, stream_name)
+
+        stream = self.get_stream(stream_name, user.realm)
+        stream.enable_puppet_mode = True
+        stream.save()
+
+        puppet = StreamPuppet.objects.create(
+            stream=stream,
+            name="Gandalf",
+            created_by=user,
+        )
+        claim_puppet(puppet, handler)
+
+        result = self.client_get(
+            f"/json/streams/{stream.id}/puppets/{puppet.id}/handlers",
+        )
+        self.assert_json_success(result)
+        data = orjson.loads(result.content)
+        self.assertEqual(len(data["handlers"]), 1)
+        self.assertEqual(data["handlers"][0]["user_id"], handler.id)

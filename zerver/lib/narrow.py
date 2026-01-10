@@ -1026,12 +1026,14 @@ def exclude_muting_conditions(
 def get_whisper_visibility_condition(
     user_id: int | None,
     user_group_ids: list[int],
+    handled_puppet_ids: list[int] | None = None,
 ) -> ClauseElement:
     """
     Returns a SQLAlchemy condition that filters messages to only include:
     - Non-whisper messages (whisper_recipients IS NULL)
     - Whispers where the user is in user_ids
     - Whispers where the user is a member of a group in group_ids
+    - Whispers where the user handles a puppet in puppet_ids
 
     For anonymous users (user_id is None), only non-whisper messages are visible.
     """
@@ -1045,7 +1047,8 @@ def get_whisper_visibility_condition(
     # 1. Not a whisper (whisper_recipients IS NULL), OR
     # 2. User is the sender, OR
     # 3. User is directly in whisper_recipients.user_ids, OR
-    # 4. User is a member of a group in whisper_recipients.group_ids
+    # 4. User is a member of a group in whisper_recipients.group_ids, OR
+    # 5. User handles a puppet in whisper_recipients.puppet_ids
 
     conditions: list[ClauseElement] = [
         # Not a whisper - visible to all
@@ -1071,6 +1074,17 @@ def get_whisper_visibility_condition(
             )
         )
 
+    # Add puppet handler check if user handles any puppets
+    if handled_puppet_ids:
+        # Check if any of user's handled puppets are in whisper_recipients.puppet_ids
+        puppet_ids_str = ",".join(f"'{p}'" for p in handled_puppet_ids)
+        conditions.append(
+            literal_column(
+                f"(zerver_message.whisper_recipients->'puppet_ids' ?| ARRAY[{puppet_ids_str}])",
+                Boolean,
+            )
+        )
+
     return or_(*conditions)
 
 
@@ -1082,19 +1096,28 @@ def get_base_query_for_search(
         # Get user info for whisper visibility
         user_id: int | None = None
         user_recursive_group_ids: list[int] = []
+        handled_puppet_ids: list[int] = []
         if user_profile is not None:
             user_id = user_profile.id
             if not user_profile.is_guest:
                 user_recursive_group_ids = sorted(
                     get_recursive_membership_groups(user_profile).values_list("id", flat=True)
                 )
+            # Get puppets the user handles for whisper visibility
+            from zerver.actions.stream_puppets import get_all_user_handled_puppet_ids
+
+            handled_puppet_ids = get_all_user_handled_puppet_ids(user_profile)
 
         query = (
             select(column("id", Integer).label("message_id"))
             .select_from(table("zerver_message"))
             .where(column("realm_id", Integer) == literal(realm_id))
             # Filter whispers based on user visibility
-            .where(get_whisper_visibility_condition(user_id, user_recursive_group_ids))
+            .where(
+                get_whisper_visibility_condition(
+                    user_id, user_recursive_group_ids, handled_puppet_ids or None
+                )
+            )
         )
 
         inner_msg_id_col = literal_column("zerver_message.id", Integer)
@@ -1108,6 +1131,11 @@ def get_base_query_for_search(
         user_recursive_group_ids = sorted(
             get_recursive_membership_groups(user_profile).values_list("id", flat=True)
         )
+
+    # Get puppets the user handles for whisper visibility
+    from zerver.actions.stream_puppets import get_all_user_handled_puppet_ids
+
+    handled_puppet_ids = get_all_user_handled_puppet_ids(user_profile)
 
     query = (
         select(column("message_id", Integer))
@@ -1173,7 +1201,11 @@ def get_base_query_for_search(
             )
         )
         # Filter whispers - user must be able to see the whisper
-        .where(get_whisper_visibility_condition(user_profile.id, user_recursive_group_ids))
+        .where(
+            get_whisper_visibility_condition(
+                user_profile.id, user_recursive_group_ids, handled_puppet_ids or None
+            )
+        )
     )
 
     inner_msg_id_col = column("message_id", Integer)

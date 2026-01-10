@@ -1,7 +1,9 @@
+from datetime import timedelta
+
 from django.utils.timezone import now as timezone_now
 
 from zerver.models import Stream, UserProfile
-from zerver.models.streams import StreamPuppet
+from zerver.models.streams import PuppetHandler, StreamPuppet
 
 
 def register_stream_puppet(
@@ -14,7 +16,8 @@ def register_stream_puppet(
     """Register or update a puppet name in a stream.
 
     Called when a puppet message is sent to track the puppet name for
-    @-mentions and conversation participants.
+    @-mentions and conversation participants. Also registers the sender
+    as a handler for this puppet (for receiving whispers).
     """
     puppet, created = StreamPuppet.objects.update_or_create(
         stream=stream,
@@ -37,6 +40,17 @@ def register_stream_puppet(
             puppet.color = puppet_color
             update_fields.append("color")
         puppet.save(update_fields=update_fields)
+
+    # Register sender as a handler for this puppet (auto-updates last_used)
+    PuppetHandler.objects.update_or_create(
+        puppet=puppet,
+        handler=sender,
+        defaults={
+            "handler_type": PuppetHandler.HANDLER_TYPE_RECENT,
+            "last_used": timezone_now(),
+        },
+    )
+
     return puppet
 
 
@@ -52,3 +66,137 @@ def get_stream_puppets(stream: Stream) -> list[dict[str, str | int | None]]:
         }
         for puppet in puppets
     ]
+
+
+def get_puppet_handler_user_ids(puppet_ids: list[int], stream: Stream) -> set[int]:
+    """Resolve puppet IDs to the user IDs that should receive whispers.
+
+    For 'claimed' puppets: returns only explicitly claimed handlers.
+    For 'open' puppets: returns handlers used within the recency window.
+    """
+    if not puppet_ids:
+        return set()
+
+    user_ids: set[int] = set()
+    now = timezone_now()
+
+    puppets = StreamPuppet.objects.filter(
+        id__in=puppet_ids,
+        stream=stream,
+    ).prefetch_related("handlers")
+
+    for puppet in puppets:
+        if puppet.visibility_mode == StreamPuppet.VISIBILITY_CLAIMED:
+            # Only include explicitly claimed handlers
+            handler_ids = puppet.handlers.filter(
+                handler_type=PuppetHandler.HANDLER_TYPE_CLAIMED
+            ).values_list("handler_id", flat=True)
+            user_ids.update(handler_ids)
+        else:
+            # Open mode: include all handlers used within the time window
+            cutoff = now - timedelta(hours=puppet.recent_handler_window_hours)
+            handler_ids = puppet.handlers.filter(
+                last_used__gte=cutoff
+            ).values_list("handler_id", flat=True)
+            user_ids.update(handler_ids)
+
+    return user_ids
+
+
+def get_user_handled_puppet_ids(user: UserProfile, stream: Stream) -> list[int]:
+    """Get puppet IDs that a user currently handles in a stream.
+
+    Returns puppets where the user is either:
+    - A claimed handler (regardless of recency)
+    - A recent handler (within the puppet's recency window) for open puppets
+    """
+    now = timezone_now()
+    puppet_ids: list[int] = []
+
+    handlers = PuppetHandler.objects.filter(
+        handler=user,
+        puppet__stream=stream,
+    ).select_related("puppet")
+
+    for handler in handlers:
+        puppet = handler.puppet
+        if handler.handler_type == PuppetHandler.HANDLER_TYPE_CLAIMED:
+            # Claimed handlers always count
+            puppet_ids.append(puppet.id)
+        elif puppet.visibility_mode == StreamPuppet.VISIBILITY_OPEN:
+            # For open puppets, check recency window
+            cutoff = now - timedelta(hours=puppet.recent_handler_window_hours)
+            if handler.last_used >= cutoff:
+                puppet_ids.append(puppet.id)
+
+    return puppet_ids
+
+
+def get_all_user_handled_puppet_ids(user: UserProfile) -> list[int]:
+    """Get all puppet IDs that a user currently handles across all streams.
+
+    Used for whisper visibility filtering in narrow queries where stream
+    context is not available.
+    """
+    now = timezone_now()
+    puppet_ids: list[int] = []
+
+    handlers = PuppetHandler.objects.filter(handler=user).select_related("puppet")
+
+    for handler in handlers:
+        puppet = handler.puppet
+        if handler.handler_type == PuppetHandler.HANDLER_TYPE_CLAIMED:
+            # Claimed handlers always count
+            puppet_ids.append(puppet.id)
+        elif puppet.visibility_mode == StreamPuppet.VISIBILITY_OPEN:
+            # For open puppets, check recency window
+            cutoff = now - timedelta(hours=puppet.recent_handler_window_hours)
+            if handler.last_used >= cutoff:
+                puppet_ids.append(puppet.id)
+
+    return puppet_ids
+
+
+def claim_puppet(
+    puppet: StreamPuppet,
+    user: UserProfile,
+) -> PuppetHandler:
+    """Explicitly claim a puppet for receiving whispers."""
+    handler, created = PuppetHandler.objects.update_or_create(
+        puppet=puppet,
+        handler=user,
+        defaults={
+            "handler_type": PuppetHandler.HANDLER_TYPE_CLAIMED,
+            "last_used": timezone_now(),
+        },
+    )
+    # If already existed as 'recent', upgrade to 'claimed'
+    if not created and handler.handler_type != PuppetHandler.HANDLER_TYPE_CLAIMED:
+        handler.handler_type = PuppetHandler.HANDLER_TYPE_CLAIMED
+        handler.save(update_fields=["handler_type"])
+    return handler
+
+
+def unclaim_puppet(
+    puppet: StreamPuppet,
+    user: UserProfile,
+) -> bool:
+    """Remove a claimed handler from a puppet. Returns True if deleted."""
+    deleted, _ = PuppetHandler.objects.filter(
+        puppet=puppet,
+        handler=user,
+        handler_type=PuppetHandler.HANDLER_TYPE_CLAIMED,
+    ).delete()
+    return deleted > 0
+
+
+def set_puppet_visibility(
+    puppet: StreamPuppet,
+    visibility_mode: str,
+    recent_handler_window_hours: int | None = None,
+) -> None:
+    """Set the visibility mode for a puppet."""
+    puppet.visibility_mode = visibility_mode
+    if recent_handler_window_hours is not None:
+        puppet.recent_handler_window_hours = recent_handler_window_hours
+    puppet.save(update_fields=["visibility_mode", "recent_handler_window_hours"])

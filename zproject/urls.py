@@ -199,10 +199,12 @@ from zerver.views.storage import get_storage, remove_storage, update_storage
 from zerver.views.streams import (
     add_default_stream,
     add_subscriptions_backend,
+    claim_puppet_handler,
     create_channel,
     create_default_stream_group,
     deactivate_stream_backend,
     delete_in_topic,
+    get_puppet_handlers,
     get_stream_backend,
     get_stream_email_address,
     get_stream_puppets,
@@ -214,8 +216,10 @@ from zerver.views.streams import (
     remove_default_stream,
     remove_default_stream_group,
     remove_subscriptions_backend,
+    unclaim_puppet_handler,
     update_default_stream_group_info,
     update_default_stream_group_streams,
+    update_puppet_visibility,
     update_stream_backend,
     update_subscription_properties_backend,
     update_subscriptions_backend,
@@ -575,6 +579,20 @@ v1_api_and_json_patterns = [
     ),
     rest_path("streams/<int:stream_id>/email_address", GET=get_stream_email_address),
     rest_path("streams/<int:stream_id>/puppets", GET=get_stream_puppets),
+    # Puppet handler management
+    rest_path(
+        "streams/<int:stream_id>/puppets/<int:puppet_id>/handlers",
+        GET=get_puppet_handlers,
+        POST=claim_puppet_handler,
+    ),
+    rest_path(
+        "streams/<int:stream_id>/puppets/<int:puppet_id>/handlers/<int:user_id>",
+        DELETE=unclaim_puppet_handler,
+    ),
+    rest_path(
+        "streams/<int:stream_id>/puppets/<int:puppet_id>/visibility",
+        PATCH=update_puppet_visibility,
+    ),
     # Delete topic in stream
     rest_path("streams/<int:stream_id>/delete_topic", POST=delete_in_topic),
     rest_path("default_streams", POST=add_default_stream, DELETE=remove_default_stream),

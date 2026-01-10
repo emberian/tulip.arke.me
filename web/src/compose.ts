@@ -47,6 +47,7 @@ export type SendMessageData = {
     // These are JSON-stringified arrays since the backend expects Json[list[int]]
     whisper_to_user_ids?: string;
     whisper_to_group_ids?: string;
+    whisper_to_puppet_ids?: string;
 } & (
     | {
           type: "stream";
@@ -248,6 +249,9 @@ export let send_message = (): void => {
             }
             if (whisper_recipients.group_ids.length > 0) {
                 message_data.whisper_to_group_ids = JSON.stringify(whisper_recipients.group_ids);
+            }
+            if (whisper_recipients.puppet_ids.length > 0) {
+                message_data.whisper_to_puppet_ids = JSON.stringify(whisper_recipients.puppet_ids);
             }
         }
     }

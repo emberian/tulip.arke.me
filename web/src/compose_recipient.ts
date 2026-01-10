@@ -251,6 +251,11 @@ export let on_compose_select_recipient_update = (): void => {
         // Update stream name in the recipient box.
         const stream_id = compose_state.stream_id();
         update_recipient_label(stream_id);
+        // Set current stream ID for whisper puppet lookup
+        compose_whisper_pill.set_current_stream_id(stream_id);
+    } else {
+        // Clear stream ID when not composing to a stream
+        compose_whisper_pill.set_current_stream_id(undefined);
     }
 
     update_on_recipient_change();

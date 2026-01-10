@@ -1842,14 +1842,17 @@ def is_message_to_self(message: Message) -> bool:
 def get_whisper_visible_user_ids(
     whisper_recipients: dict[str, list[int]] | None,
     sender_id: int,
+    stream: "Stream | None" = None,
 ) -> set[int] | None:
     """
     Returns the set of user IDs who can see this whisper, or None if not a whisper.
-    Expands group memberships dynamically at query time.
+    Expands group memberships and puppet handlers dynamically at query time.
 
     Args:
-        whisper_recipients: Dict with "user_ids" and "group_ids" lists, or None for public messages
+        whisper_recipients: Dict with "user_ids", "group_ids", and "puppet_ids" lists,
+            or None for public messages
         sender_id: The sender's user ID (sender always sees their own whispers)
+        stream: The stream for puppet handler resolution (required if puppet_ids present)
 
     Returns:
         Set of user IDs who can see the whisper, or None if not a whisper
@@ -1868,6 +1871,14 @@ def get_whisper_visible_user_ids(
             get_recursive_group_members_union_for_groups(group_ids).values_list("id", flat=True)
         )
         user_ids |= group_member_ids
+
+    # Resolve puppet handlers to user IDs
+    puppet_ids = whisper_recipients.get("puppet_ids", [])
+    if puppet_ids and stream is not None:
+        from zerver.actions.stream_puppets import get_puppet_handler_user_ids
+
+        puppet_handler_ids = get_puppet_handler_user_ids(puppet_ids, stream)
+        user_ids |= puppet_handler_ids
 
     return user_ids
 

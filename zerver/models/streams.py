@@ -507,6 +507,14 @@ class StreamPuppet(models.Model):
 
     MAX_NAME_LENGTH = 100
 
+    # Visibility mode for whispers to this puppet
+    VISIBILITY_OPEN = "open"
+    VISIBILITY_CLAIMED = "claimed"
+    VISIBILITY_CHOICES = [
+        (VISIBILITY_OPEN, "Open"),
+        (VISIBILITY_CLAIMED, "Claimed"),
+    ]
+
     stream = models.ForeignKey(Stream, on_delete=CASCADE, related_name="puppets")
     name = models.CharField(max_length=MAX_NAME_LENGTH, db_index=True)
     # Avatar URL for the puppet (optional, copied from most recent message)
@@ -519,12 +527,56 @@ class StreamPuppet(models.Model):
     # User who first created/used this puppet
     created_by = models.ForeignKey(UserProfile, on_delete=CASCADE, related_name="+")
 
+    # Visibility mode for whispers directed at this puppet:
+    # - 'open': Any recent player (within window) sees whispers
+    # - 'claimed': Only explicitly claimed handlers see whispers
+    visibility_mode = models.CharField(
+        max_length=10,
+        choices=VISIBILITY_CHOICES,
+        default=VISIBILITY_OPEN,
+    )
+    # For open mode: how long (in hours) a user counts as a handler after using puppet
+    recent_handler_window_hours = models.PositiveIntegerField(default=24)
+
     class Meta:
         unique_together = ("stream", "name")
 
     @override
     def __str__(self) -> str:
         return f"{self.name} in {self.stream.name}"
+
+
+class PuppetHandler(models.Model):
+    """Tracks users/bots that can receive whispers directed at a puppet.
+
+    When a message is whispered to a puppet, all handlers for that puppet
+    see the whisper. Supports both 'claimed' handlers (explicit assignment)
+    and 'recent' handlers (auto-registered from puppet usage).
+    """
+
+    HANDLER_TYPE_CLAIMED = "claimed"
+    HANDLER_TYPE_RECENT = "recent"
+    HANDLER_TYPE_CHOICES = [
+        (HANDLER_TYPE_CLAIMED, "Claimed"),
+        (HANDLER_TYPE_RECENT, "Recent"),
+    ]
+
+    puppet = models.ForeignKey(StreamPuppet, on_delete=CASCADE, related_name="handlers")
+    handler = models.ForeignKey(UserProfile, on_delete=CASCADE, related_name="handled_puppets")
+    handler_type = models.CharField(
+        max_length=10,
+        choices=HANDLER_TYPE_CHOICES,
+        default=HANDLER_TYPE_RECENT,
+    )
+    created_at = models.DateTimeField(default=timezone_now)
+    last_used = models.DateTimeField(default=timezone_now)
+
+    class Meta:
+        unique_together = ("puppet", "handler")
+
+    @override
+    def __str__(self) -> str:
+        return f"{self.handler.delivery_email} handles {self.puppet.name}"
 
 
 class ChannelEmailAddress(models.Model):

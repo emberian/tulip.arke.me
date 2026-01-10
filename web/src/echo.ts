@@ -261,14 +261,29 @@ export function insert_local_message(
     const topic = message_request.topic;
 
     // Parse whisper recipients from the message request if present
-    let whisper_recipients: {user_ids?: number[]; group_ids?: number[]} | undefined;
-    if (message_request.whisper_to_user_ids || message_request.whisper_to_group_ids) {
+    let whisper_recipients:
+        | {user_ids?: number[]; group_ids?: number[]; puppet_ids?: number[]}
+        | undefined;
+    if (
+        message_request.whisper_to_user_ids ||
+        message_request.whisper_to_group_ids ||
+        message_request.whisper_to_puppet_ids
+    ) {
         whisper_recipients = {};
         if (message_request.whisper_to_user_ids) {
-            whisper_recipients.user_ids = JSON.parse(message_request.whisper_to_user_ids) as number[];
+            whisper_recipients.user_ids = JSON.parse(
+                message_request.whisper_to_user_ids,
+            ) as number[];
         }
         if (message_request.whisper_to_group_ids) {
-            whisper_recipients.group_ids = JSON.parse(message_request.whisper_to_group_ids) as number[];
+            whisper_recipients.group_ids = JSON.parse(
+                message_request.whisper_to_group_ids,
+            ) as number[];
+        }
+        if (message_request.whisper_to_puppet_ids) {
+            whisper_recipients.puppet_ids = JSON.parse(
+                message_request.whisper_to_puppet_ids,
+            ) as number[];
         }
     }
 

@@ -130,6 +130,7 @@ def send_message_backend(
     puppet_color: str | None = None,
     whisper_to_user_ids: Json[list[int]] | None = None,
     whisper_to_group_ids: Json[list[int]] | None = None,
+    whisper_to_puppet_ids: Json[list[int]] | None = None,
 ) -> HttpResponse:
     recipient_type_name = req_type
     if recipient_type_name == "direct":
@@ -244,6 +245,7 @@ def send_message_backend(
         puppet_color=puppet_color,
         whisper_to_user_ids=whisper_to_user_ids,
         whisper_to_group_ids=whisper_to_group_ids,
+        whisper_to_puppet_ids=whisper_to_puppet_ids,
     )
     data["id"] = sent_message_result.message_id
     if sent_message_result.automatic_new_visibility_policy:
