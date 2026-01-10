@@ -1846,10 +1846,10 @@ def get_whisper_visible_user_ids(
 ) -> set[int] | None:
     """
     Returns the set of user IDs who can see this whisper, or None if not a whisper.
-    Expands group memberships and puppet handlers dynamically at query time.
+    Expands group memberships, puppet handlers, and persona owners dynamically at query time.
 
     Args:
-        whisper_recipients: Dict with "user_ids", "group_ids", and "puppet_ids" lists,
+        whisper_recipients: Dict with "user_ids", "group_ids", "puppet_ids", and "persona_ids" lists,
             or None for public messages
         sender_id: The sender's user ID (sender always sees their own whispers)
         stream: The stream for puppet handler resolution (required if puppet_ids present)
@@ -1880,6 +1880,19 @@ def get_whisper_visible_user_ids(
         puppet_handler_ids = get_puppet_handler_user_ids(puppet_ids, stream)
         user_ids |= puppet_handler_ids
 
+    # Resolve persona owners to user IDs
+    persona_ids = whisper_recipients.get("persona_ids", [])
+    if persona_ids:
+        from zerver.models.personas import UserPersona
+
+        persona_owner_ids = set(
+            UserPersona.objects.filter(
+                id__in=persona_ids,
+                is_active=True,
+            ).values_list("user_id", flat=True)
+        )
+        user_ids |= persona_owner_ids
+
     return user_ids
 
 
@@ -1888,18 +1901,21 @@ def can_user_see_whisper(
     whisper_recipients: dict[str, list[int]] | None,
     sender_id: int,
     user_group_ids: set[int] | None = None,
+    user_persona_ids: set[int] | None = None,
 ) -> bool:
     """
     Check if a user can see a whispered message.
 
     This is an optimized version that can use pre-computed user_group_ids
-    to avoid repeated database queries when checking multiple messages.
+    and user_persona_ids to avoid repeated database queries when checking
+    multiple messages.
 
     Args:
         user_id: The user to check visibility for
-        whisper_recipients: Dict with "user_ids" and "group_ids" lists, or None
+        whisper_recipients: Dict with "user_ids", "group_ids", and "persona_ids" lists, or None
         sender_id: The sender's user ID
         user_group_ids: Optional pre-computed set of group IDs the user belongs to
+        user_persona_ids: Optional pre-computed set of persona IDs the user owns
 
     Returns:
         True if the user can see the message (or it's not a whisper)
@@ -1933,6 +1949,24 @@ def can_user_see_whisper(
 
         # Check if any of the user's groups are in the whisper recipients
         if user_group_ids & set(group_ids):
+            return True
+
+    # Check persona ownership
+    persona_ids = whisper_recipients.get("persona_ids", [])
+    if persona_ids:
+        if user_persona_ids is None:
+            # Compute user's persona ownership if not provided
+            from zerver.models.personas import UserPersona
+
+            user_persona_ids = set(
+                UserPersona.objects.filter(
+                    user_id=user_id,
+                    is_active=True,
+                ).values_list("id", flat=True)
+            )
+
+        # Check if any of the user's personas are in the whisper recipients
+        if user_persona_ids & set(persona_ids):
             return True
 
     return False

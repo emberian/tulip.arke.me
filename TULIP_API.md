@@ -51,6 +51,7 @@ Extended with new parameters for whispers and puppeting.
 | `whisper_to_user_ids` | array[int] | No | User IDs who can see this whisper (channel messages only) |
 | `whisper_to_group_ids` | array[int] | No | Group IDs whose members can see this whisper |
 | `whisper_to_puppet_ids` | array[int] | No | Puppet IDs whose handlers can see this whisper |
+| `whisper_to_persona_ids` | array[int] | No | Persona IDs whose owners can see this whisper |
 | `puppet_display_name` | string | No | Display name for puppet message (max 100 chars) |
 | `puppet_avatar_url` | string | No | Avatar URL for puppet message |
 | `puppet_color` | string | No | Hex color for puppet name (#RGB or #RRGGBB) |
@@ -120,7 +121,8 @@ Messages may include these new fields:
   "whisper_recipients": {
     "user_ids": [10, 11],
     "group_ids": [20],
-    "puppet_ids": [42]
+    "puppet_ids": [42],
+    "persona_ids": [43]
   },
   "puppet_display_name": "Mysterious NPC",
   "puppet_avatar_url": "https://example.com/npc.png",

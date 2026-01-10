@@ -8,6 +8,8 @@ import * as compose_state from "./compose_state.ts";
 import * as input_pill from "./input_pill.ts";
 import type {User} from "./people.ts";
 import * as people from "./people.ts";
+import * as personas from "./personas.ts";
+import type {Persona} from "./personas.ts";
 import * as stream_puppets from "./stream_puppets.ts";
 import type {StreamPuppet} from "./stream_puppets.ts";
 import type {CombinedPill, CombinedPillContainer, PuppetMention, UserOrMentionPillData} from "./typeahead_helper.ts";
@@ -26,8 +28,15 @@ export type PuppetPill = {
     puppet_name: string;
 };
 
-// Extended pill type that includes puppets
-export type WhisperPill = CombinedPill | PuppetPill;
+// Persona pill type for whisper recipients
+export type PersonaPill = {
+    type: "persona";
+    persona_id: number;
+    persona_name: string;
+};
+
+// Extended pill type that includes puppets and personas
+export type WhisperPill = CombinedPill | PuppetPill | PersonaPill;
 
 export let widget: input_pill.InputPillContainer<WhisperPill> | undefined;
 
@@ -46,7 +55,7 @@ function create_item_from_text(
     text: string,
     current_items: WhisperPill[],
 ): WhisperPill | undefined {
-    // Try puppets first (if we have a stream context), then user groups, then users
+    // Try puppets first (if we have a stream context), then personas, user groups, then users
     if (current_stream_id !== undefined) {
         const puppets = stream_puppets.get_puppets_for_stream(current_stream_id);
         const puppet = puppets.find(
@@ -64,6 +73,25 @@ function create_item_from_text(
                     puppet_name: puppet.name,
                 };
             }
+        }
+    }
+
+    // Try personas
+    const realm_personas = personas.get_realm_personas();
+    const persona = realm_personas.find(
+        (p) => p.name.toLowerCase() === text.toLowerCase(),
+    );
+    if (persona) {
+        // Check if already added
+        const already_added = current_items.some(
+            (item) => item.type === "persona" && item.persona_id === persona.id,
+        );
+        if (!already_added) {
+            return {
+                type: "persona",
+                persona_id: persona.id,
+                persona_name: persona.name,
+            };
         }
     }
 
@@ -85,6 +113,9 @@ function get_text_from_item(item: WhisperPill): string {
     if (item.type === "puppet") {
         return item.puppet_name;
     }
+    if (item.type === "persona") {
+        return item.persona_name;
+    }
     if (item.type === "user_group") {
         return user_group_pill.get_group_name_from_item(item);
     }
@@ -97,6 +128,9 @@ function get_text_from_item(item: WhisperPill): string {
 function get_display_value_from_item(item: WhisperPill): string {
     if (item.type === "puppet") {
         return item.puppet_name;
+    }
+    if (item.type === "persona") {
+        return item.persona_name;
     }
     if (item.type === "user_group") {
         const group = user_groups.maybe_get_user_group_from_id(item.group_id);
@@ -116,6 +150,11 @@ function generate_pill_html(item: WhisperPill): string {
         // Use a simple pill style for puppets with a character icon
         // Escape the name to prevent XSS
         return `<span class="pill-value"><i class="zulip-icon zulip-icon-bot" aria-hidden="true"></i> ${_.escape(item.puppet_name)}</span>`;
+    }
+    if (item.type === "persona") {
+        // Use a simple pill style for personas with a user icon
+        // Escape the name to prevent XSS
+        return `<span class="pill-value"><i class="zulip-icon zulip-icon-user" aria-hidden="true"></i> ${_.escape(item.persona_name)}</span>`;
     }
     if (item.type === "user_group") {
         return user_group_pill.generate_pill_html(item);
@@ -173,8 +212,29 @@ function get_puppets(): StreamPuppet[] {
     return all_puppets.filter((p) => !current_puppet_ids.has(p.id));
 }
 
-// Type for whisper typeahead items (includes puppets)
-type WhisperTypeaheadItem = UserGroupPillData | UserPillData | {type: "puppet"; puppet: PuppetMention};
+function get_personas_for_typeahead(): Persona[] {
+    // Fetch personas if we haven't already
+    if (!personas.has_fetched_realm_personas()) {
+        personas.fetch_realm_personas();
+    }
+    const all_personas = personas.get_realm_personas();
+    if (!widget) {
+        return all_personas;
+    }
+    // Filter out already-added personas
+    const current_persona_ids = new Set(get_persona_ids());
+    return all_personas.filter((p) => !current_persona_ids.has(p.id));
+}
+
+// Persona mention type for typeahead
+type PersonaMention = {
+    id: number;
+    name: string;
+    avatar_url: string | null;
+};
+
+// Type for whisper typeahead items (includes puppets and personas)
+type WhisperTypeaheadItem = UserGroupPillData | UserPillData | {type: "puppet"; puppet: PuppetMention} | {type: "persona"; persona: PersonaMention};
 
 function update_compose_state(): void {
     if (!widget) {
@@ -186,8 +246,9 @@ function update_compose_state(): void {
     const user_ids = user_pill.get_user_ids(combined_widget);
     const group_ids = user_group_pill.get_group_ids(combined_widget);
     const puppet_ids = get_puppet_ids();
+    const persona_ids = get_persona_ids();
 
-    compose_state.set_whisper_recipients(user_ids, group_ids, puppet_ids);
+    compose_state.set_whisper_recipients(user_ids, group_ids, puppet_ids, persona_ids);
 }
 
 export function initialize({
@@ -238,6 +299,17 @@ export function initialize({
             }));
             source.push(...puppets);
 
+            // Add personas
+            const persona_items = get_personas_for_typeahead().map((persona) => ({
+                type: "persona" as const,
+                persona: {
+                    id: persona.id,
+                    name: persona.name,
+                    avatar_url: persona.avatar_url,
+                } as PersonaMention,
+            }));
+            source.push(...persona_items);
+
             return source;
         },
         item_html(item: WhisperTypeaheadItem, _query: string): string {
@@ -247,6 +319,13 @@ export function initialize({
             if (item.type === "puppet") {
                 // Use render_person which handles puppets
                 return typeahead_helper.render_person(item as UserOrMentionPillData);
+            }
+            if (item.type === "persona") {
+                // Render persona similar to puppet
+                return typeahead_helper.render_person({
+                    type: "persona",
+                    persona: item.persona,
+                } as UserOrMentionPillData);
             }
             assert(item.type === "user");
             return typeahead_helper.render_person(item);
@@ -262,6 +341,11 @@ export function initialize({
                 return typeahead_helper.query_matches_person(query, item as UserOrMentionPillData);
             }
 
+            if (item.type === "persona") {
+                // Match against persona name
+                return item.persona.name.toLowerCase().includes(query);
+            }
+
             assert(item.type === "user");
             return typeahead_helper.query_matches_person(query, item);
         },
@@ -269,6 +353,7 @@ export function initialize({
             const users: UserPillData[] = [];
             const groups: UserGroupPillData[] = [];
             const puppets: WhisperTypeaheadItem[] = [];
+            const persona_items: WhisperTypeaheadItem[] = [];
 
             for (const match of matches) {
                 if (match.type === "user") {
@@ -277,10 +362,12 @@ export function initialize({
                     groups.push(match);
                 } else if (match.type === "puppet") {
                     puppets.push(match);
+                } else if (match.type === "persona") {
+                    persona_items.push(match);
                 }
             }
 
-            // Sort users and groups together, then append puppets
+            // Sort users and groups together, then append puppets and personas
             const sorted = typeahead_helper.sort_stream_or_group_members_options({
                 users,
                 query,
@@ -288,7 +375,7 @@ export function initialize({
                 for_stream_subscribers: false,
             });
 
-            // Sort puppets alphabetically and append them
+            // Sort puppets alphabetically
             puppets.sort((a, b) => {
                 if (a.type === "puppet" && b.type === "puppet") {
                     return a.puppet.name.localeCompare(b.puppet.name);
@@ -296,7 +383,15 @@ export function initialize({
                 return 0;
             });
 
-            return [...sorted, ...puppets] as WhisperTypeaheadItem[];
+            // Sort personas alphabetically
+            persona_items.sort((a, b) => {
+                if (a.type === "persona" && b.type === "persona") {
+                    return a.persona.name.localeCompare(b.persona.name);
+                }
+                return 0;
+            });
+
+            return [...sorted, ...puppets, ...persona_items] as WhisperTypeaheadItem[];
         },
         updater(item: WhisperTypeaheadItem, _query: string): undefined {
             if (!widget) {
@@ -311,6 +406,13 @@ export function initialize({
                     type: "puppet",
                     puppet_id: item.puppet.id,
                     puppet_name: item.puppet.name,
+                });
+            } else if (item.type === "persona") {
+                // Add persona pill directly
+                widget.appendValidatedData({
+                    type: "persona",
+                    persona_id: item.persona.id,
+                    persona_name: item.persona.name,
                 });
             } else {
                 assert(item.type === "user");
@@ -340,7 +442,7 @@ export function clear(): void {
     if (widget) {
         widget.clear();
     }
-    compose_state.set_whisper_recipients([], [], []);
+    compose_state.set_whisper_recipients([], [], [], []);
 }
 
 export function get_user_ids(): number[] {
@@ -367,6 +469,16 @@ export function get_puppet_ids(): number[] {
         .items()
         .filter((item): item is PuppetPill => item.type === "puppet")
         .map((item) => item.puppet_id);
+}
+
+export function get_persona_ids(): number[] {
+    if (!widget) {
+        return [];
+    }
+    return widget
+        .items()
+        .filter((item): item is PersonaPill => item.type === "persona")
+        .map((item) => item.persona_id);
 }
 
 export function has_recipients(): boolean {
@@ -424,10 +536,28 @@ export function set_from_puppet_ids(puppet_ids: number[]): void {
     }
 }
 
+export function set_from_persona_ids(persona_ids: number[]): void {
+    if (!widget) {
+        return;
+    }
+    const realm_personas = personas.get_realm_personas();
+    for (const persona_id of persona_ids) {
+        const persona = realm_personas.find((p) => p.id === persona_id);
+        if (persona) {
+            widget.appendValidatedData({
+                type: "persona",
+                persona_id: persona.id,
+                persona_name: persona.name,
+            });
+        }
+    }
+}
+
 export function set_from_all_ids(
     user_ids: number[],
     group_ids: number[],
     puppet_ids: number[] = [],
+    persona_ids: number[] = [],
 ): void {
     if (!widget) {
         return;
@@ -440,11 +570,13 @@ export function set_from_all_ids(
     set_from_group_ids(group_ids);
     // Add puppets
     set_from_puppet_ids(puppet_ids);
+    // Add personas
+    set_from_persona_ids(persona_ids);
     // Update compose state
-    compose_state.set_whisper_recipients(user_ids, group_ids, puppet_ids);
+    compose_state.set_whisper_recipients(user_ids, group_ids, puppet_ids, persona_ids);
 }
 
 // Backward compatibility alias
 export function set_from_user_and_group_ids(user_ids: number[], group_ids: number[]): void {
-    set_from_all_ids(user_ids, group_ids, []);
+    set_from_all_ids(user_ids, group_ids, [], []);
 }

@@ -709,6 +709,189 @@ class WhisperToPuppetTest(ZulipTestCase):
         self.assert_json_error(result, f"Puppet {puppet.id} does not belong to this channel")
 
 
+class WhisperToPersonaTest(ZulipTestCase):
+    """Tests for whispering to personas."""
+
+    def test_whisper_to_persona_delivers_to_owner(self) -> None:
+        """Test that a whisper to a persona is delivered to the persona's owner."""
+        from zerver.actions.personas import create_user_persona
+        from zerver.models.personas import UserPersona
+
+        sender = self.example_user("hamlet")
+        persona_owner = self.example_user("cordelia")
+        non_recipient = self.example_user("othello")
+
+        stream_name = "Verona"
+        for user in [sender, persona_owner, non_recipient]:
+            self.subscribe(user, stream_name)
+
+        # Create a persona for cordelia
+        persona = create_user_persona(
+            user=persona_owner,
+            name="Gandalf",
+            avatar_url=None,
+            color=None,
+            bio="A wizard",
+        )
+
+        self.login_user(sender)
+        result = self.client_post(
+            "/json/messages",
+            {
+                "type": "stream",
+                "to": orjson.dumps(stream_name).decode(),
+                "content": "Whisper to persona",
+                "topic": "whisper test",
+                "whisper_to_persona_ids": orjson.dumps([persona.id]).decode(),
+            },
+        )
+        self.assert_json_success(result)
+        message_id = orjson.loads(result.content)["id"]
+
+        # Sender and persona owner should have UserMessage
+        for user in [sender, persona_owner]:
+            self.assertTrue(
+                UserMessage.objects.filter(user_profile=user, message_id=message_id).exists(),
+                f"{user.email} should have received the whisper",
+            )
+
+        # Non-recipient should NOT have UserMessage
+        self.assertFalse(
+            UserMessage.objects.filter(user_profile=non_recipient, message_id=message_id).exists()
+        )
+
+    def test_whisper_to_persona_metadata_stored(self) -> None:
+        """Test that persona_ids are stored in whisper_recipients."""
+        from zerver.actions.personas import create_user_persona
+
+        sender = self.example_user("hamlet")
+        persona_owner = self.example_user("cordelia")
+
+        stream_name = "Verona"
+        for user in [sender, persona_owner]:
+            self.subscribe(user, stream_name)
+
+        persona = create_user_persona(
+            user=persona_owner,
+            name="Gandalf",
+            avatar_url=None,
+            color=None,
+            bio="A wizard",
+        )
+
+        self.login_user(sender)
+        result = self.client_post(
+            "/json/messages",
+            {
+                "type": "stream",
+                "to": orjson.dumps(stream_name).decode(),
+                "content": "Whisper with persona metadata",
+                "topic": "whisper test",
+                "whisper_to_persona_ids": orjson.dumps([persona.id]).decode(),
+            },
+        )
+        self.assert_json_success(result)
+        message_id = orjson.loads(result.content)["id"]
+
+        message = Message.objects.get(id=message_id)
+        assert message.whisper_recipients is not None
+        self.assertIn("persona_ids", message.whisper_recipients)
+        self.assertEqual(message.whisper_recipients["persona_ids"], [persona.id])
+
+    def test_invalid_persona_id_rejected(self) -> None:
+        """Test that invalid persona IDs are rejected."""
+        sender = self.example_user("hamlet")
+
+        stream_name = "Verona"
+        self.subscribe(sender, stream_name)
+
+        self.login_user(sender)
+        result = self.client_post(
+            "/json/messages",
+            {
+                "type": "stream",
+                "to": orjson.dumps(stream_name).decode(),
+                "content": "Whisper to invalid persona",
+                "topic": "whisper test",
+                "whisper_to_persona_ids": orjson.dumps([99999]).decode(),
+            },
+        )
+        self.assert_json_error(result, "Invalid whisper recipient persona IDs")
+
+    def test_whisper_to_users_groups_puppets_and_personas(self) -> None:
+        """Test sending a whisper to users, groups, puppets, and personas simultaneously."""
+        from zerver.actions.personas import create_user_persona
+        from zerver.actions.stream_puppets import claim_puppet
+        from zerver.models.streams import StreamPuppet
+
+        sender = self.example_user("hamlet")
+        direct_recipient = self.example_user("cordelia")
+        group_member = self.example_user("iago")
+        puppet_handler = self.example_user("prospero")
+        persona_owner = self.example_user("aaron")
+        non_recipient = self.example_user("othello")
+
+        stream_name = "Verona"
+        for user in [sender, direct_recipient, group_member, puppet_handler, persona_owner, non_recipient]:
+            self.subscribe(user, stream_name)
+
+        stream = get_stream(stream_name, sender.realm)
+        stream.enable_puppet_mode = True
+        stream.save()
+
+        # Create a user group
+        user_group = check_add_user_group(
+            sender.realm, "whisper_all_group", [group_member], acting_user=sender
+        )
+
+        # Create a puppet
+        puppet = StreamPuppet.objects.create(
+            stream=stream,
+            name="Gandalf the Puppet",
+            created_by=sender,
+            visibility_mode=StreamPuppet.VISIBILITY_CLAIMED,
+        )
+        claim_puppet(puppet, puppet_handler)
+
+        # Create a persona
+        persona = create_user_persona(
+            user=persona_owner,
+            name="Gandalf the Persona",
+            avatar_url=None,
+            color=None,
+            bio="A wizard persona",
+        )
+
+        self.login_user(sender)
+        result = self.client_post(
+            "/json/messages",
+            {
+                "type": "stream",
+                "to": orjson.dumps(stream_name).decode(),
+                "content": "Whisper to all types",
+                "topic": "whisper test",
+                "whisper_to_user_ids": orjson.dumps([direct_recipient.id]).decode(),
+                "whisper_to_group_ids": orjson.dumps([user_group.id]).decode(),
+                "whisper_to_puppet_ids": orjson.dumps([puppet.id]).decode(),
+                "whisper_to_persona_ids": orjson.dumps([persona.id]).decode(),
+            },
+        )
+        self.assert_json_success(result)
+        message_id = orjson.loads(result.content)["id"]
+
+        # All intended recipients should have UserMessage
+        for user in [sender, direct_recipient, group_member, puppet_handler, persona_owner]:
+            self.assertTrue(
+                UserMessage.objects.filter(user_profile=user, message_id=message_id).exists(),
+                f"{user.email} should have received the whisper",
+            )
+
+        # Non-recipient should NOT have UserMessage
+        self.assertFalse(
+            UserMessage.objects.filter(user_profile=non_recipient, message_id=message_id).exists()
+        )
+
+
 class PuppetHandlerAPITest(ZulipTestCase):
     """Tests for puppet handler management APIs."""
 

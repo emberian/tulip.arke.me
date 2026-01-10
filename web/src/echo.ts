@@ -268,12 +268,13 @@ export function insert_local_message(
     // Parse whisper recipients from the message request if present
     const number_array_schema = z.array(z.number());
     let whisper_recipients:
-        | {user_ids?: number[]; group_ids?: number[]; puppet_ids?: number[]}
+        | {user_ids?: number[]; group_ids?: number[]; puppet_ids?: number[]; persona_ids?: number[]}
         | undefined;
     if (
         message_request.whisper_to_user_ids ||
         message_request.whisper_to_group_ids ||
-        message_request.whisper_to_puppet_ids
+        message_request.whisper_to_puppet_ids ||
+        message_request.whisper_to_persona_ids
     ) {
         whisper_recipients = {};
         if (message_request.whisper_to_user_ids) {
@@ -289,6 +290,11 @@ export function insert_local_message(
         if (message_request.whisper_to_puppet_ids) {
             whisper_recipients.puppet_ids = number_array_schema.parse(
                 JSON.parse(message_request.whisper_to_puppet_ids),
+            );
+        }
+        if (message_request.whisper_to_persona_ids) {
+            whisper_recipients.persona_ids = number_array_schema.parse(
+                JSON.parse(message_request.whisper_to_persona_ids),
             );
         }
     }

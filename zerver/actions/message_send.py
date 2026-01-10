@@ -1872,6 +1872,7 @@ def check_message(
     whisper_to_user_ids: list[int] | None = None,
     whisper_to_group_ids: list[int] | None = None,
     whisper_to_puppet_ids: list[int] | None = None,
+    whisper_to_persona_ids: list[int] | None = None,
 ) -> SendMessageRequest:
     """See
     https://zulip.readthedocs.io/en/latest/subsystems/sending-messages.html
@@ -2028,6 +2029,7 @@ def check_message(
         whisper_to_user_ids is not None
         or whisper_to_group_ids is not None
         or whisper_to_puppet_ids is not None
+        or whisper_to_persona_ids is not None
     ):
         # Validate that whispers are only sent to channel messages
         if not addressee.is_stream():
@@ -2081,6 +2083,22 @@ def check_message(
                         _("Invalid puppet ID: {puppet_id}").format(puppet_id=puppet_id)
                     )
             whisper_recipients["puppet_ids"] = whisper_to_puppet_ids
+
+        if whisper_to_persona_ids:
+            # Validate persona IDs exist and are active in this realm
+            from zerver.models.personas import UserPersona
+
+            valid_persona_ids = list(
+                UserPersona.objects.filter(
+                    id__in=whisper_to_persona_ids,
+                    user__realm=realm,
+                    user__is_active=True,
+                    is_active=True,
+                ).values_list("id", flat=True)
+            )
+            if len(valid_persona_ids) != len(whisper_to_persona_ids):
+                raise JsonableError(_("Invalid whisper recipient persona IDs"))
+            whisper_recipients["persona_ids"] = whisper_to_persona_ids
 
         message.whisper_recipients = whisper_recipients
 

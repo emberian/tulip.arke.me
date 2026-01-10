@@ -37,6 +37,7 @@ New parameters for channel messages:
 | `whisper_to_user_ids` | array[int] | User IDs who can see the whisper (plus sender) |
 | `whisper_to_group_ids` | array[int] | Group IDs whose members can see the whisper |
 | `whisper_to_puppet_ids` | array[int] | Puppet IDs whose handlers can see the whisper |
+| `whisper_to_persona_ids` | array[int] | Persona IDs whose owners can see the whisper |
 
 **Example:**
 
@@ -80,12 +81,27 @@ curl -X POST https://tulip.example.com/api/v1/messages \
   -d 'whisper_to_puppet_ids=[42]'
 ```
 
+### Whispering to Personas
+
+Whispers can also target personas. When a persona is whispered to, the message is delivered to the user who owns that persona.
+
+```bash
+curl -X POST https://tulip.example.com/api/v1/messages \
+  -u user@example.com:API_KEY \
+  -d 'type=stream' \
+  -d 'to=roleplay' \
+  -d 'topic=Adventure' \
+  -d 'content=*whispers to Gandalf* Are you still tracking the ring?' \
+  -d 'whisper_to_persona_ids=[42]'
+```
+
 ### Notes
 
 - Whispers only work in channel messages, not direct messages
 - Group membership is evaluated dynamically - adding a user to a whispered group grants access to past whispers
 - The sender always has access to their own whispers
 - Puppet whispers require the puppet to exist in the target channel and have an active handler
+- Persona whispers notify the persona's owner
 
 ---
 
@@ -567,6 +583,7 @@ Messages sent with a persona include these fields:
 | `whisper_to_user_ids` | array[int] | Whisper recipients (user IDs) |
 | `whisper_to_group_ids` | array[int] | Whisper recipients (group IDs) |
 | `whisper_to_puppet_ids` | array[int] | Whisper recipients (puppet IDs) |
+| `whisper_to_persona_ids` | array[int] | Whisper recipients (persona IDs) |
 | `puppet_display_name` | string | Puppet display name |
 | `puppet_avatar_url` | string | Puppet avatar URL |
 | `puppet_color` | string | Puppet name color |

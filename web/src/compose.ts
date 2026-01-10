@@ -49,6 +49,7 @@ export type SendMessageData = {
     whisper_to_user_ids?: string;
     whisper_to_group_ids?: string;
     whisper_to_puppet_ids?: string;
+    whisper_to_persona_ids?: string;
     // Persona ID for posting as a character
     persona_id?: number;
 } & (
@@ -255,6 +256,9 @@ export let send_message = (): void => {
             }
             if (whisper_recipients.puppet_ids.length > 0) {
                 message_data.whisper_to_puppet_ids = JSON.stringify(whisper_recipients.puppet_ids);
+            }
+            if (whisper_recipients.persona_ids.length > 0) {
+                message_data.whisper_to_persona_ids = JSON.stringify(whisper_recipients.persona_ids);
             }
         }
     }
