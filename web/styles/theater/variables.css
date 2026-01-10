@@ -1,0 +1,54 @@
+/* Theater Mode CSS Variables
+ * Dark, atmospheric palette for immersive RP experiences
+ * Color contrast ratios verified for WCAG 2.1 AA compliance
+ */
+
+:root {
+    /* Background colors */
+    --theater-bg: #0d0d0f;
+    --theater-bg-elevated: #161619;
+    --theater-sidebar-bg: #0a0a0c;
+    --theater-prompter-bg: #131316;
+    --theater-input-bg: #1a1a1e;
+
+    /* Text colors - all meet 4.5:1 contrast ratio against --theater-bg */
+    --theater-text: #e8e6e3;           /* ~15:1 contrast */
+    --theater-text-secondary: #a8a5a0; /* ~7.5:1 contrast */
+    --theater-muted: #8a8780;          /* ~5:1 contrast (was #6b6965 at 3.2:1) */
+    --theater-action-text: #d4c9a8;    /* ~10:1 contrast (was #c4b998) */
+
+    /* Accent colors - meet 4.5:1 for text, 3:1 for UI components */
+    --theater-accent: #8b7cf0;         /* ~5:1 contrast (was #7b68ee at 4.2:1) */
+    --theater-accent-hover: #9d90f2;
+    --theater-accent-dim: #6b5ed0;
+    --theater-whisper-accent: #a580e0; /* ~5.5:1 contrast (was #9370db) */
+    --theater-whisper-bg: rgba(165, 128, 224, 0.08);
+
+    /* Focus colors (WCAG 2.1 Level AA: 3:1 against adjacent colors) */
+    --theater-focus-ring: #8b7cf0;
+    --theater-focus-ring-offset: 2px;
+
+    /* Borders and dividers */
+    --theater-border: #2a2a2e;
+    --theater-divider: #3a3a3e;
+
+    /* Scene breaks */
+    --theater-scene-break-color: #4a4a4e;
+
+    /* Character portraits */
+    --theater-portrait-size: 64px;
+    --theater-portrait-size-small: 40px;
+
+    /* Typography */
+    --theater-font-narrative: "Source Serif Pro", Georgia, serif;
+    --theater-font-display: "Cormorant Garamond", "Source Serif Pro", Georgia, serif;
+    --theater-font-ui: "Source Sans Pro", system-ui, sans-serif;
+
+    /* Spacing */
+    --theater-message-gap: 0.75rem;
+    --theater-scene-gap: 2rem;
+
+    /* Transitions */
+    --theater-transition-fast: 150ms ease;
+    --theater-transition-normal: 250ms ease;
+}
