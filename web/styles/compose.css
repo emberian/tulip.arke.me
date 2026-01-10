@@ -2322,3 +2322,59 @@ textarea.new_message_textarea {
 .command-field-inline.unfilled-required .command-field-select-inline {
     border-bottom-color: hsl(0deg 70% 50%);
 }
+
+/* Whisper compose UI styles */
+#compose-whisper-recipient {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background-color: hsl(217deg 20% 96%);
+    border-bottom: 1px solid hsl(0deg 0% 88%);
+
+    .whisper-recipients-header {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        color: var(--color-text-default);
+        font-size: 0.9em;
+        white-space: nowrap;
+
+        .fa-eye-slash {
+            color: hsl(0deg 0% 50%);
+        }
+    }
+
+    .whisper-pill-container {
+        flex: 1;
+        min-width: 0;
+        background-color: var(--color-background-compose);
+        border: 1px solid hsl(0deg 0% 80%);
+        border-radius: 4px;
+        padding: 2px 4px;
+
+        .input {
+            min-width: 80px;
+            padding: 2px 4px;
+            outline: none;
+
+            &:empty::before {
+                content: attr(data-no-recipients-text);
+                color: hsl(0deg 0% 60%);
+            }
+        }
+    }
+}
+
+/* Active whisper toggle button */
+.compose_whisper_toggle.active {
+    color: var(--color-compose-send-control-button-focus-shadow);
+    background-color: hsl(217deg 20% 90%);
+    border-radius: 3px;
+}
+
+/* Hide whisper button for DMs (only works for stream messages) */
+#compose:has(#compose-recipient.compose-recipient-direct-selected) .whisper-divider,
+#compose:has(#compose-recipient.compose-recipient-direct-selected) .compose_whisper_toggle {
+    display: none;
+}

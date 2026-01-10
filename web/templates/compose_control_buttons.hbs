@@ -66,4 +66,8 @@
     </div>
     {{/unless}}
     <a role="button" class="compose_control_button compose_help_button zulip-icon zulip-icon-question compose_button_tooltip" tabindex=0 data-tippy-content="{{t 'Message formatting' }}" data-overlay-trigger="message-formatting"></a>
+    <div class="divider whisper-divider"></div>
+    <div class="compose_control_button_container preview_mode_disabled compose_button_tooltip" data-tippy-content="{{t 'Whisper to specific recipients' }}">
+        <a role="button" class="compose_control_button compose_whisper_toggle fa fa-eye-slash" aria-label="{{t 'Whisper' }}" tabindex=0></a>
+    </div>
 </div>

@@ -757,6 +757,12 @@ class PersonIsImportedStub(BaseModel):
     is_imported_stub: bool
 
 
+class PersonColor(BaseModel):
+    user_id: int
+    color: str | None
+    effective_color: str | None
+
+
 class EventRealmUserUpdate(BaseEvent):
     type: Literal["realm_user"]
     op: Literal["update"]
@@ -771,6 +777,7 @@ class EventRealmUserUpdate(BaseEvent):
         | PersonTimezone
         | PersonIsActive
         | PersonIsImportedStub
+        | PersonColor
     )
 
 

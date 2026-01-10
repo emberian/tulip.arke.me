@@ -11,6 +11,7 @@ import * as compose_banner from "./compose_banner.ts";
 import * as compose_fade from "./compose_fade.ts";
 import * as compose_pm_pill from "./compose_pm_pill.ts";
 import * as compose_state from "./compose_state.ts";
+import * as compose_whisper_pill from "./compose_whisper_pill.ts";
 import * as compose_ui from "./compose_ui.ts";
 import type {ComposeTriggeredOptions} from "./compose_ui.ts";
 import * as compose_validate from "./compose_validate.ts";
@@ -169,6 +170,14 @@ function switch_message_type(message_type: MessageType): void {
     $("#compose-content .alert").hide();
 
     compose_state.set_message_type(message_type);
+
+    // Clear whisper state when switching to DM (whispers are only for stream messages)
+    if (message_type === "private") {
+        compose_whisper_pill.clear();
+        compose_state.clear_whisper_state();
+        $("#compose-whisper-recipient").hide();
+        $(".compose_whisper_toggle").removeClass("active");
+    }
 
     const opts = {
         message_type,

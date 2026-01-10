@@ -249,7 +249,7 @@ export function info_for(user_id: number, direct_message_recipients: Set<number>
         is_current_user: people.is_my_user_id(user_id),
         num_unread: get_num_unread(user_id),
         user_circle_class,
-        user_color: person.color ?? null,
+        user_color: person.effective_color ?? person.color ?? null,
         status_text,
         has_status_text: Boolean(status_text),
         user_list_style,

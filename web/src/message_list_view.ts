@@ -47,6 +47,7 @@ import type {TopicLink} from "./types.ts";
 import * as typing_data from "./typing_data.ts";
 import * as typing_events from "./typing_events.ts";
 import * as ui_util from "./ui_util.ts";
+import * as user_groups from "./user_groups.ts";
 import * as user_topics from "./user_topics.ts";
 import type {AllVisibilityPolicies} from "./user_topics.ts";
 import * as util from "./util.ts";
@@ -58,6 +59,8 @@ export type MessageContainer = {
     include_recipient: boolean;
     include_sender: boolean;
     is_hidden: boolean;
+    is_whisper: boolean;
+    whisper_recipients_text?: string;
     last_edit_timestamp: number | undefined;
     last_moved_timestamp: number | undefined;
     mention_classname: string | undefined;
@@ -671,7 +674,9 @@ export class MessageListView {
         const sender_is_bot = people.sender_is_bot(message);
         const sender_is_guest = people.sender_is_guest(message);
         const sender_is_deactivated = people.sender_is_deactivated(message);
-        const sender_color = people.get_by_user_id(message.sender_id)?.color ?? null;
+        const sender = people.get_by_user_id(message.sender_id);
+        // Use effective_color (considers group memberships) when available, fall back to personal color
+        const sender_color = sender?.effective_color ?? sender?.color ?? null;
         const should_add_guest_indicator_for_sender = people.should_add_guest_user_indicator(
             message.sender_id,
         );
@@ -851,9 +856,48 @@ export class MessageListView {
                 message,
                 include_sender,
             );
+
+            // Check if this is a whisper message
+            const is_whisper = message.whisper_recipients !== undefined;
+            let whisper_recipients_text: string | undefined;
+            if (is_whisper && message.whisper_recipients) {
+                // Build a display string for whisper recipients
+                const recipient_parts: string[] = [];
+                if (message.whisper_recipients.user_ids?.length) {
+                    const user_names = message.whisper_recipients.user_ids
+                        .map((id) => people.get_by_user_id(id)?.full_name ?? `User ${id}`)
+                        .slice(0, 3);
+                    if (message.whisper_recipients.user_ids.length > 3) {
+                        user_names.push(
+                            `+${message.whisper_recipients.user_ids.length - 3} more`,
+                        );
+                    }
+                    recipient_parts.push(...user_names);
+                }
+                if (message.whisper_recipients.group_ids?.length) {
+                    const group_names = message.whisper_recipients.group_ids
+                        .map((id) => {
+                            const group = user_groups.maybe_get_user_group_from_id(id);
+                            return group
+                                ? user_groups.get_display_group_name(group.name)
+                                : $t({defaultMessage: "Unknown group"});
+                        })
+                        .slice(0, 3);
+                    if (message.whisper_recipients.group_ids.length > 3) {
+                        group_names.push(
+                            `+${message.whisper_recipients.group_ids.length - 3} more`,
+                        );
+                    }
+                    recipient_parts.push(...group_names);
+                }
+                whisper_recipients_text = recipient_parts.join(", ");
+            }
+
             const message_container = {
                 msg: message,
                 include_recipient,
+                is_whisper,
+                ...(whisper_recipients_text && {whisper_recipients_text}),
                 ...(subscribed && {subscribed}),
                 ...(unsubscribed && {unsubscribed}),
                 ...(stream_url && {stream_url}),

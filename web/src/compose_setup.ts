@@ -10,6 +10,7 @@ import * as channel from "./channel.ts";
 import * as command_compose from "./command_compose.ts";
 import * as compose from "./compose.ts";
 import * as compose_actions from "./compose_actions.ts";
+import * as compose_whisper_pill from "./compose_whisper_pill.ts";
 import * as compose_banner from "./compose_banner.ts";
 import * as compose_call from "./compose_call.ts";
 import * as compose_call_ui from "./compose_call_ui.ts";
@@ -161,6 +162,45 @@ export function initialize(): void {
     $(".compose-control-buttons-container .audio_link").toggle(
         compose_call.compute_show_audio_chat_button(),
     );
+
+    // Initialize whisper recipient pill widget
+    compose_whisper_pill.initialize({
+        on_pill_create_or_remove() {
+            // Update validation state when whisper recipients change
+            compose_validate.validate_and_update_send_button_status();
+        },
+    });
+
+    // Whisper toggle handler
+    $("#compose").on("click", ".compose_whisper_toggle", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Whispers are only supported for stream messages
+        if (compose_state.get_message_type() !== "stream") {
+            return;
+        }
+
+        const is_whisper_mode = compose_state.get_whisper_mode();
+        compose_state.set_whisper_mode(!is_whisper_mode);
+
+        // Toggle UI
+        const $whisper_row = $("#compose-whisper-recipient");
+        const $whisper_toggle = $(".compose_whisper_toggle");
+
+        if (!is_whisper_mode) {
+            // Entering whisper mode
+            $whisper_row.show();
+            $whisper_toggle.addClass("active");
+            $("#whisper_recipient").trigger("focus");
+        } else {
+            // Exiting whisper mode
+            $whisper_row.hide();
+            $whisper_toggle.removeClass("active");
+            compose_whisper_pill.clear();
+            $("textarea#compose-textarea").trigger("focus");
+        }
+    });
 
     $("textarea#compose-textarea").on("keydown", (event) => {
         compose_ui.handle_keydown(

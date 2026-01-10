@@ -3,13 +3,12 @@ import type {StreamPuppet} from "./stream_puppets.ts";
 
 /**
  * Get the effective color for a user.
- * Returns the user's personal color if set, or null.
- * The backend has already computed the effective color (personal > group > default),
- * so we just return what's in the user object.
+ * Returns effective_color (considers group memberships) if set,
+ * otherwise falls back to personal color, or null.
  */
 export function get_user_color(user_id: number): string | null {
     const person = people.maybe_get_user_by_id(user_id);
-    return person?.color ?? null;
+    return person?.effective_color ?? person?.color ?? null;
 }
 
 /**

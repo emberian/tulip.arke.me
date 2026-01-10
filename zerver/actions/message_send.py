@@ -103,6 +103,7 @@ from zerver.lib.widget import do_widget_post_save_actions
 from zerver.models import (
     Client,
     Message,
+    NamedUserGroup,
     PushDevice,
     PushDeviceToken,
     Realm,
@@ -666,6 +667,42 @@ def build_message_send_dict(
         possible_topic_wildcard_mention=mention_data.message_has_topic_wildcards(),
         possible_stream_wildcard_mention=mention_data.message_has_stream_wildcards(),
     )
+
+    # Filter recipients if this is a whisper
+    if message.whisper_recipients is not None:
+        from zerver.lib.message import get_whisper_visible_user_ids
+
+        whisper_visible_user_ids = get_whisper_visible_user_ids(
+            message.whisper_recipients, message.sender_id
+        )
+        assert whisper_visible_user_ids is not None
+
+        # Filter all user ID sets to only include whisper-visible users
+        info.active_user_ids &= whisper_visible_user_ids
+        info.online_push_user_ids &= whisper_visible_user_ids
+        info.dm_mention_email_disabled_user_ids &= whisper_visible_user_ids
+        info.dm_mention_push_disabled_user_ids &= whisper_visible_user_ids
+        info.stream_push_user_ids &= whisper_visible_user_ids
+        info.stream_email_user_ids &= whisper_visible_user_ids
+        info.followed_topic_push_user_ids &= whisper_visible_user_ids
+        info.followed_topic_email_user_ids &= whisper_visible_user_ids
+        info.um_eligible_user_ids &= whisper_visible_user_ids
+        info.long_term_idle_user_ids &= whisper_visible_user_ids
+        info.default_bot_user_ids &= whisper_visible_user_ids
+        info.all_bot_user_ids &= whisper_visible_user_ids
+        info.push_device_registered_user_ids &= whisper_visible_user_ids
+        info.topic_wildcard_mention_user_ids &= whisper_visible_user_ids
+        info.stream_wildcard_mention_user_ids &= whisper_visible_user_ids
+        info.topic_wildcard_mention_in_followed_topic_user_ids &= whisper_visible_user_ids
+        info.stream_wildcard_mention_in_followed_topic_user_ids &= whisper_visible_user_ids
+        info.topic_participant_user_ids &= whisper_visible_user_ids
+
+        # Filter service bot tuples
+        info.service_bot_tuples = [
+            (user_id, bot_type)
+            for user_id, bot_type in info.service_bot_tuples
+            if user_id in whisper_visible_user_ids
+        ]
 
     # Render our message_dicts.
     assert message.rendered_content is None
@@ -1469,6 +1506,8 @@ def check_send_message(
     puppet_display_name: str | None = None,
     puppet_avatar_url: str | None = None,
     puppet_color: str | None = None,
+    whisper_to_user_ids: list[int] | None = None,
+    whisper_to_group_ids: list[int] | None = None,
 ) -> SentMessageResult:
     addressee = Addressee.legacy_build(sender, recipient_type_name, message_to, topic_name)
     message_request = check_message(
@@ -1487,6 +1526,8 @@ def check_send_message(
         puppet_display_name=puppet_display_name,
         puppet_avatar_url=puppet_avatar_url,
         puppet_color=puppet_color,
+        whisper_to_user_ids=whisper_to_user_ids,
+        whisper_to_group_ids=whisper_to_group_ids,
     )
     return do_send_messages(
         [message_request],
@@ -1768,6 +1809,8 @@ def check_message(
     puppet_display_name: str | None = None,
     puppet_avatar_url: str | None = None,
     puppet_color: str | None = None,
+    whisper_to_user_ids: list[int] | None = None,
+    whisper_to_group_ids: list[int] | None = None,
 ) -> SendMessageRequest:
     """See
     https://zulip.readthedocs.io/en/latest/subsystems/sending-messages.html
@@ -1899,6 +1942,41 @@ def check_message(
     # Set puppet identity if provided (already validated above)
     message.puppet_display_name = puppet_display_name
     message.puppet_avatar_url = puppet_avatar_url
+
+    # Set whisper recipients if provided
+    if whisper_to_user_ids is not None or whisper_to_group_ids is not None:
+        # Validate that whispers are only sent to channel messages
+        if not addressee.is_stream():
+            raise JsonableError(_("Whispers can only be sent in channels"))
+
+        whisper_recipients: dict[str, list[int]] = {}
+        if whisper_to_user_ids:
+            # Validate user IDs exist and are in the same realm
+            valid_user_ids = list(
+                UserProfile.objects.filter(
+                    id__in=whisper_to_user_ids,
+                    realm=realm,
+                    is_active=True,
+                ).values_list("id", flat=True)
+            )
+            if len(valid_user_ids) != len(whisper_to_user_ids):
+                raise JsonableError(_("Invalid whisper recipient user IDs"))
+            whisper_recipients["user_ids"] = whisper_to_user_ids
+
+        if whisper_to_group_ids:
+            # Validate group IDs exist and are in the same realm
+            valid_group_ids = list(
+                NamedUserGroup.objects.filter(
+                    id__in=whisper_to_group_ids,
+                    realm=realm,
+                    deactivated=False,
+                ).values_list("id", flat=True)
+            )
+            if len(valid_group_ids) != len(whisper_to_group_ids):
+                raise JsonableError(_("Invalid whisper recipient group IDs"))
+            whisper_recipients["group_ids"] = whisper_to_group_ids
+
+        message.whisper_recipients = whisper_recipients
 
     # We render messages later in the process.
     assert message.rendered_content is None

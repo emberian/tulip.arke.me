@@ -534,8 +534,11 @@ def json_change_settings(
             check_change_full_name(user_profile, full_name, user_profile)
 
     if color is not None and user_profile.color != color:
-        from zerver.lib.users import check_color, get_user_ids_who_can_access_user
-        from zerver.models.realm_audit_logs import AuditLogEventType, RealmAuditLog
+        from zerver.lib.users import (
+            check_color,
+            get_user_effective_color,
+            get_user_ids_who_can_access_user,
+        )
         from zerver.tornado.django_api import send_event_on_commit
 
         validated_color = check_color(color)
@@ -557,7 +560,11 @@ def json_change_settings(
         )
 
         # Send realm_user event so all users see the color change
-        payload = dict(user_id=user_profile.id, color=validated_color)
+        # Include effective_color which considers group memberships
+        effective_color = get_user_effective_color(user_profile)
+        payload = dict(
+            user_id=user_profile.id, color=validated_color, effective_color=effective_color
+        )
         send_event_on_commit(
             user_profile.realm,
             dict(type="realm_user", op="update", person=payload),

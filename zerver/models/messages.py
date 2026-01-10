@@ -120,6 +120,12 @@ class AbstractMessage(models.Model):
     puppet_display_name = models.CharField(max_length=100, null=True, default=None)
     puppet_avatar_url = models.URLField(max_length=500, null=True, default=None)
 
+    # Whisper visibility - if set, message is only visible to specified users/groups.
+    # Structure: {"user_ids": [int], "group_ids": [int]} or None for public messages.
+    # Group memberships are resolved dynamically at query time, so adding a user to
+    # a whispered group grants them access to past whispers to that group.
+    whisper_recipients = models.JSONField(null=True, default=None)
+
     class Meta:
         abstract = True
 

@@ -137,8 +137,12 @@ export function initialize(): void {
             return true;
         }
 
-        // For spoilers, allow clicking either the header or elements within it
-        if ($target.is(".spoiler-header") || $target.parents(".spoiler-header").length > 0) {
+        // For spoilers, allow clicking either the header, elements within it, or inline spoilers
+        if (
+            $target.is(".spoiler-header") ||
+            $target.parents(".spoiler-header").length > 0 ||
+            $target.is(".spoiler-inline")
+        ) {
             return true;
         }
 

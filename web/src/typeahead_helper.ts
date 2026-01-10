@@ -133,7 +133,7 @@ export let render_person = (person: UserPillData | UserOrMentionPillData): strin
 
     const pronouns = pronouns_list?.[0]?.value;
 
-    const user_color = person.user.color ?? null;
+    const user_color = person.user.effective_color ?? person.user.color ?? null;
     const typeahead_arguments = {
         primary: person.user.full_name,
         img_src: avatar_url,

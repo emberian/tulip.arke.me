@@ -577,6 +577,22 @@ def has_message_access(
     * The optional stream parameter is validated; is_subscribed is not.
     """
 
+    # Check whisper visibility first - this is an additional constraint
+    if message.whisper_recipients is not None:
+        # Compute user's group membership if needed for whisper check
+        if user_group_membership_details.user_recursive_group_ids is None:
+            user_group_membership_details.user_recursive_group_ids = set(
+                get_recursive_membership_groups(user_profile).values_list("id", flat=True)
+            )
+
+        if not can_user_see_whisper(
+            user_profile.id,
+            message.whisper_recipients,
+            message.sender_id,
+            user_group_membership_details.user_recursive_group_ids,
+        ):
+            return False
+
     if message.recipient.type != Recipient.STREAM:
         # You can only access direct messages you received
         return has_user_message()
@@ -1819,5 +1835,93 @@ def is_message_to_self(message: Message) -> bool:
 
     if message.recipient.type == Recipient.PERSONAL:
         return message.recipient == message.sender.recipient
+
+    return False
+
+
+def get_whisper_visible_user_ids(
+    whisper_recipients: dict[str, list[int]] | None,
+    sender_id: int,
+) -> set[int] | None:
+    """
+    Returns the set of user IDs who can see this whisper, or None if not a whisper.
+    Expands group memberships dynamically at query time.
+
+    Args:
+        whisper_recipients: Dict with "user_ids" and "group_ids" lists, or None for public messages
+        sender_id: The sender's user ID (sender always sees their own whispers)
+
+    Returns:
+        Set of user IDs who can see the whisper, or None if not a whisper
+    """
+    if whisper_recipients is None:
+        return None
+
+    from zerver.lib.user_groups import get_recursive_group_members_union_for_groups
+
+    user_ids = set(whisper_recipients.get("user_ids", []))
+    user_ids.add(sender_id)  # Sender always sees their own whispers
+
+    group_ids = whisper_recipients.get("group_ids", [])
+    if group_ids:
+        group_member_ids = set(
+            get_recursive_group_members_union_for_groups(group_ids).values_list("id", flat=True)
+        )
+        user_ids |= group_member_ids
+
+    return user_ids
+
+
+def can_user_see_whisper(
+    user_id: int,
+    whisper_recipients: dict[str, list[int]] | None,
+    sender_id: int,
+    user_group_ids: set[int] | None = None,
+) -> bool:
+    """
+    Check if a user can see a whispered message.
+
+    This is an optimized version that can use pre-computed user_group_ids
+    to avoid repeated database queries when checking multiple messages.
+
+    Args:
+        user_id: The user to check visibility for
+        whisper_recipients: Dict with "user_ids" and "group_ids" lists, or None
+        sender_id: The sender's user ID
+        user_group_ids: Optional pre-computed set of group IDs the user belongs to
+
+    Returns:
+        True if the user can see the message (or it's not a whisper)
+    """
+    if whisper_recipients is None:
+        return True
+
+    # Sender always sees their own whispers
+    if user_id == sender_id:
+        return True
+
+    # Check direct user IDs
+    if user_id in whisper_recipients.get("user_ids", []):
+        return True
+
+    # Check group membership
+    group_ids = whisper_recipients.get("group_ids", [])
+    if group_ids:
+        if user_group_ids is None:
+            # Compute user's group membership if not provided
+            from zerver.lib.user_groups import get_recursive_membership_groups
+            from zerver.models import UserProfile
+
+            try:
+                user = UserProfile.objects.get(id=user_id)
+                user_group_ids = set(
+                    get_recursive_membership_groups(user).values_list("id", flat=True)
+                )
+            except UserProfile.DoesNotExist:
+                return False
+
+        # Check if any of the user's groups are in the whisper recipients
+        if user_group_ids & set(group_ids):
+            return True
 
     return False

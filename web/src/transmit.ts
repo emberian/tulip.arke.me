@@ -20,6 +20,9 @@ type SendMessageData = {
     content: string;
     resend?: boolean;
     locally_echoed?: boolean;
+    // Whisper fields for visibility-restricted messages (stream messages only)
+    whisper_to_user_ids?: number[];
+    whisper_to_group_ids?: number[];
 } & (
     | {
           type: "stream";

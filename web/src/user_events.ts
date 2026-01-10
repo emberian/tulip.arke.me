@@ -55,7 +55,7 @@ export const user_update_schema = z.intersection(
         z.object({role: z.number()}),
         z.object({email: z.string(), timezone: z.string()}),
         z.object({is_active: z.boolean()}),
-        z.object({color: z.nullable(z.string())}),
+        z.object({color: z.nullable(z.string()), effective_color: z.nullable(z.string())}),
     ]),
 );
 
@@ -226,12 +226,14 @@ export const update_person = function update(event: UserUpdate): void {
 
     if ("color" in event) {
         user.color = event.color;
+        user.effective_color = event.effective_color;
         // Update current_user if it's me
         if (people.is_my_user_id(event.user_id)) {
             current_user.color = event.color;
         }
         // Trigger UI updates for mentions, sender names, and user lists
-        message_live_update.update_user_color(event.user_id, event.color);
+        // Use effective_color for display since it considers group memberships
+        message_live_update.update_user_color(event.user_id, event.effective_color ?? event.color);
         activity_ui.redraw();
         buddy_list.insert_or_move([event.user_id]);
     }

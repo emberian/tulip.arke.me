@@ -75,7 +75,10 @@ function get_message_container_for_preview(message: Message): MessageContainer {
         sender_is_bot: people.sender_is_bot(message),
         sender_is_deactivated: people.sender_is_deactivated(message),
         sender_is_guest: people.sender_is_guest(message),
-        sender_color: people.get_by_user_id(message.sender_id)?.color ?? null,
+        sender_color:
+            people.get_by_user_id(message.sender_id)?.effective_color ??
+            people.get_by_user_id(message.sender_id)?.color ??
+            null,
         should_add_guest_indicator_for_sender: people.should_add_guest_user_indicator(
             message.sender_id,
         ),
@@ -88,6 +91,7 @@ function get_message_container_for_preview(message: Message): MessageContainer {
         date_divider_html: undefined,
         edited: false,
         include_recipient: false,
+        is_whisper: false,
         last_edit_timestamp: undefined,
         last_moved_timestamp: undefined,
         mention_classname: undefined,

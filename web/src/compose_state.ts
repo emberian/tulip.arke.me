@@ -12,6 +12,11 @@ let last_focused_compose_type_input: HTMLTextAreaElement | undefined;
 let preview_render_count = 0;
 let is_processing_forward_message = false;
 
+// Whisper state - for sending messages visible only to specific recipients
+let whisper_mode = false;
+let whisper_user_ids: number[] = [];
+let whisper_group_ids: number[] = [];
+
 // We use this variable to keep track of whether user has viewed the topic resolved
 // banner for the current compose session, for a narrow. This prevents the banner
 // from popping up for every keystroke while composing.
@@ -301,4 +306,40 @@ export function allow_draft_restoring(): void {
 
 export function can_restore_drafts(): boolean {
     return _can_restore_drafts;
+}
+
+// Whisper functions
+export function set_whisper_mode(enabled: boolean): void {
+    whisper_mode = enabled;
+    if (!enabled) {
+        // Clear recipients when disabling whisper mode
+        whisper_user_ids = [];
+        whisper_group_ids = [];
+    }
+}
+
+export function get_whisper_mode(): boolean {
+    return whisper_mode;
+}
+
+export function set_whisper_recipients(user_ids: number[], group_ids: number[]): void {
+    whisper_user_ids = user_ids;
+    whisper_group_ids = group_ids;
+}
+
+export function get_whisper_recipients(): {user_ids: number[]; group_ids: number[]} {
+    return {
+        user_ids: whisper_user_ids,
+        group_ids: whisper_group_ids,
+    };
+}
+
+export function has_whisper_recipients(): boolean {
+    return whisper_user_ids.length > 0 || whisper_group_ids.length > 0;
+}
+
+export function clear_whisper_state(): void {
+    whisper_mode = false;
+    whisper_user_ids = [];
+    whisper_group_ids = [];
 }

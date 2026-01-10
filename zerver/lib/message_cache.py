@@ -339,6 +339,7 @@ class MessageDict:
                 "sender__realm_id": message.sender.realm_id,
                 "puppet_display_name": message.puppet_display_name,
                 "puppet_avatar_url": message.puppet_avatar_url,
+                "whisper_recipients": message.whisper_recipients,
             }
             for message in messages
         ]
@@ -367,6 +368,7 @@ class MessageDict:
             "sender__realm_id",
             "puppet_display_name",
             "puppet_avatar_url",
+            "whisper_recipients",
         ]
         # Uses index: zerver_message_pkey
         messages = Message.objects.filter(id__in=needed_ids).values(*fields)
@@ -405,6 +407,7 @@ class MessageDict:
             submessages=row["submessages"],
             puppet_display_name=row.get("puppet_display_name"),
             puppet_avatar_url=row.get("puppet_avatar_url"),
+            whisper_recipients=row.get("whisper_recipients"),
         )
 
     @staticmethod
@@ -428,6 +431,7 @@ class MessageDict:
         submessages: list[dict[str, Any]],
         puppet_display_name: str | None = None,
         puppet_avatar_url: str | None = None,
+        whisper_recipients: dict[str, list[int]] | None = None,
     ) -> dict[str, Any]:
         obj = dict(
             id=message_id,
@@ -495,6 +499,10 @@ class MessageDict:
         if puppet_display_name is not None:
             obj["puppet_display_name"] = puppet_display_name
             obj["puppet_avatar_url"] = puppet_avatar_url
+
+        # Whisper recipients for visibility-restricted messages
+        if whisper_recipients is not None:
+            obj["whisper_recipients"] = whisper_recipients
 
         return obj
 

@@ -13,6 +13,7 @@ import * as compose_banner from "./compose_banner.ts";
 import * as compose_notifications from "./compose_notifications.ts";
 import * as compose_state from "./compose_state.ts";
 import * as compose_ui from "./compose_ui.ts";
+import * as compose_whisper_pill from "./compose_whisper_pill.ts";
 import * as compose_validate from "./compose_validate.ts";
 import * as drafts from "./drafts.ts";
 import * as echo from "./echo.ts";
@@ -42,6 +43,9 @@ export type SendMessageData = {
     resend?: boolean;
     locally_echoed?: boolean;
     draft_id: string;
+    // Whisper fields for visibility-restricted messages (stream messages only)
+    whisper_to_user_ids?: number[];
+    whisper_to_group_ids?: number[];
 } & (
     | {
           type: "stream";
@@ -133,6 +137,11 @@ export function clear_compose_box(): void {
     compose_ui.hide_compose_spinner();
     scheduled_messages.reset_selected_schedule_timestamp();
     $(".needs-empty-compose").removeClass("disabled-on-hover");
+    // Clear whisper state and UI
+    compose_whisper_pill.clear();
+    compose_state.clear_whisper_state();
+    $("#compose-whisper-recipient").hide();
+    $(".compose_whisper_toggle").removeClass("active");
 }
 
 export type SentMessageData = SendMessageData & {
@@ -228,6 +237,17 @@ export let send_message = (): void => {
             to: JSON.stringify([stream_id]),
             draft_id,
         };
+
+        // Add whisper recipients if in whisper mode
+        if (compose_state.get_whisper_mode() && compose_state.has_whisper_recipients()) {
+            const whisper_recipients = compose_state.get_whisper_recipients();
+            if (whisper_recipients.user_ids.length > 0) {
+                message_data.whisper_to_user_ids = whisper_recipients.user_ids;
+            }
+            if (whisper_recipients.group_ids.length > 0) {
+                message_data.whisper_to_group_ids = whisper_recipients.group_ids;
+            }
+        }
     }
 
     let local_id: string;

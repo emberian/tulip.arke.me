@@ -1023,15 +1023,78 @@ def exclude_muting_conditions(
     return conditions
 
 
+def get_whisper_visibility_condition(
+    user_id: int | None,
+    user_group_ids: list[int],
+) -> ClauseElement:
+    """
+    Returns a SQLAlchemy condition that filters messages to only include:
+    - Non-whisper messages (whisper_recipients IS NULL)
+    - Whispers where the user is in user_ids
+    - Whispers where the user is a member of a group in group_ids
+
+    For anonymous users (user_id is None), only non-whisper messages are visible.
+    """
+    whisper_col = literal_column("zerver_message.whisper_recipients")
+
+    if user_id is None:
+        # Anonymous users can only see non-whisper messages
+        return whisper_col.is_(None)
+
+    # Build the condition: message is visible if:
+    # 1. Not a whisper (whisper_recipients IS NULL), OR
+    # 2. User is the sender, OR
+    # 3. User is directly in whisper_recipients.user_ids, OR
+    # 4. User is a member of a group in whisper_recipients.group_ids
+
+    conditions: list[ClauseElement] = [
+        # Not a whisper - visible to all
+        whisper_col.is_(None),
+        # User is the sender (sender always sees their own whispers)
+        literal_column("zerver_message.sender_id", Integer) == literal(user_id),
+        # User is directly in whisper recipients
+        # Use raw SQL for JSONB containment check
+        literal_column(
+            f"(zerver_message.whisper_recipients->'user_ids' @> '[{user_id}]'::jsonb)",
+            Boolean,
+        ),
+    ]
+
+    # Add group membership check if user has groups
+    if user_group_ids:
+        # Check if any of the user's groups are in whisper_recipients.group_ids
+        group_ids_str = ",".join(f"'{g}'" for g in user_group_ids)
+        conditions.append(
+            literal_column(
+                f"(zerver_message.whisper_recipients->'group_ids' ?| ARRAY[{group_ids_str}])",
+                Boolean,
+            )
+        )
+
+    return or_(*conditions)
+
+
 def get_base_query_for_search(
     realm_id: int, user_profile: UserProfile | None, need_user_message: bool
 ) -> tuple[Select, ColumnElement[Integer]]:
     # Handle the simple case where user_message isn't involved first.
     if not need_user_message:
+        # Get user info for whisper visibility
+        user_id: int | None = None
+        user_recursive_group_ids: list[int] = []
+        if user_profile is not None:
+            user_id = user_profile.id
+            if not user_profile.is_guest:
+                user_recursive_group_ids = sorted(
+                    get_recursive_membership_groups(user_profile).values_list("id", flat=True)
+                )
+
         query = (
             select(column("id", Integer).label("message_id"))
             .select_from(table("zerver_message"))
             .where(column("realm_id", Integer) == literal(realm_id))
+            # Filter whispers based on user visibility
+            .where(get_whisper_visibility_condition(user_id, user_recursive_group_ids))
         )
 
         inner_msg_id_col = literal_column("zerver_message.id", Integer)
@@ -1109,6 +1172,8 @@ def get_base_query_for_search(
                 .exists(),
             )
         )
+        # Filter whispers - user must be able to see the whisper
+        .where(get_whisper_visibility_condition(user_profile.id, user_recursive_group_ids))
     )
 
     inner_msg_id_col = column("message_id", Integer)

@@ -622,6 +622,7 @@ class APIUserDict(TypedDict):
     max_message_id: NotRequired[int]
     is_imported_stub: bool
     color: str | None
+    effective_color: NotRequired[str | None]
 
 
 def format_user_row(

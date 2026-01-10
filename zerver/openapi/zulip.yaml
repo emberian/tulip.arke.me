@@ -8200,6 +8200,7 @@ paths:
                                 stream_id: {}
                                 subject: {}
                                 submessages: {}
+                                whisper_recipients: {}
                                 timestamp: {}
                                 topic_links: {}
                                 type: {}
@@ -8423,6 +8424,40 @@ paths:
 
                     **Changes**: New in Zulip 8.0 (feature level 236).
                   example: true
+                whisper_to_user_ids:
+                  type: array
+                  items:
+                    type: integer
+                  description: |
+                    A list of user IDs who can see this whispered message, in
+                    addition to the sender. Only valid for channel messages.
+
+                    When specified, the message will only be visible to the sender
+                    and the users in this list (plus members of any groups specified
+                    in `whisper_to_group_ids`). Other channel subscribers will not
+                    see the message.
+
+                    Cannot be used with direct messages.
+                  example: [10, 11]
+                whisper_to_group_ids:
+                  type: array
+                  items:
+                    type: integer
+                  description: |
+                    A list of user group IDs whose members can see this whispered
+                    message. Only valid for channel messages.
+
+                    When specified, the message will only be visible to the sender
+                    and members of these groups (plus any individual users specified
+                    in `whisper_to_user_ids`). Other channel subscribers will not
+                    see the message.
+
+                    Group membership is evaluated dynamically - if a user is added
+                    to a group after the message is sent, they will gain access to
+                    past whispers sent to that group.
+
+                    Cannot be used with direct messages.
+                  example: [20]
               required:
                 - type
                 - to
@@ -8431,6 +8466,10 @@ paths:
               to:
                 contentType: application/json
               read_by_sender:
+                contentType: application/json
+              whisper_to_user_ids:
+                contentType: application/json
+              whisper_to_group_ids:
                 contentType: application/json
       responses:
         "200":
@@ -9578,6 +9617,7 @@ paths:
                               stream_id: {}
                               subject: {}
                               submessages: {}
+                              whisper_recipients: {}
                               timestamp: {}
                               topic_links: {}
                               type: {}
@@ -25058,6 +25098,7 @@ paths:
                           stream_id: {}
                           subject: {}
                           submessages: {}
+                          whisper_recipients: {}
                           timestamp: {}
                           topic_links: {}
                           type: {}
@@ -26865,6 +26906,7 @@ components:
             stream_id: {}
             subject: {}
             submessages: {}
+            whisper_recipients: {}
             timestamp: {}
             topic_links: {}
             type: {}
@@ -27175,6 +27217,26 @@ components:
                   If set, the list of user IDs who can see this submessage.
                   If null, the submessage is visible to all users who can
                   see the parent message.
+        whisper_recipients:
+          nullable: true
+          type: object
+          description: |
+            If set, specifies which users can see this whispered message.
+            Contains `user_ids` and/or `group_ids` arrays specifying the
+            recipients. Group membership is resolved dynamically at query time.
+          properties:
+            user_ids:
+              type: array
+              items:
+                type: integer
+              description: |
+                List of user IDs who can see this whispered message.
+            group_ids:
+              type: array
+              items:
+                type: integer
+              description: |
+                List of group IDs whose members can see this whispered message.
         timestamp:
           type: integer
           description: |

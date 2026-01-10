@@ -11,6 +11,7 @@ import * as compose_notifications from "./compose_notifications.ts";
 import * as compose_pm_pill from "./compose_pm_pill.ts";
 import * as compose_recipient from "./compose_recipient.ts";
 import * as compose_state from "./compose_state.ts";
+import * as compose_whisper_pill from "./compose_whisper_pill.ts";
 import * as compose_tooltips from "./compose_tooltips.ts";
 import * as compose_ui from "./compose_ui.ts";
 import type {ComposeTriggeredOptions} from "./compose_ui.ts";
@@ -170,6 +171,11 @@ function clear_box(): void {
     $(".needs-empty-compose").removeClass("disabled-on-hover");
     // Reset send button status.
     $("#compose-send-button").removeClass("disabled-message-send-controls");
+    // Clear whisper state
+    compose_whisper_pill.clear();
+    compose_state.clear_whisper_state();
+    $("#compose-whisper-recipient").hide();
+    $(".compose_whisper_toggle").removeClass("active");
 }
 
 let autosize_callback_opts: ComposeActionsStartOpts;
@@ -536,6 +542,11 @@ export let cancel = (): void => {
     call_hooks(compose_cancel_hooks);
     compose_state.set_message_type(undefined);
     compose_pm_pill.clear();
+    // Clear whisper state and hide the whisper recipient row
+    compose_whisper_pill.clear();
+    compose_state.clear_whisper_state();
+    $("#compose-whisper-recipient").hide();
+    $(".compose_whisper_toggle").removeClass("active");
     $(document).trigger("compose_canceled.zulip");
     reload.maybe_reset_pending_reload_timeout("compose_end");
 };

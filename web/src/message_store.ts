@@ -92,6 +92,16 @@ export const raw_message_schema = z.intersection(
             // Puppet identity for character/roleplay messages
             puppet_display_name: z.optional(z.string()),
             puppet_avatar_url: z.optional(z.string()),
+            // Whisper recipients - if set, message is only visible to specified users/groups
+            // Can be null (non-whisper), undefined (missing), or an object with user_ids/group_ids
+            whisper_recipients: z.optional(
+                z.nullable(
+                    z.object({
+                        user_ids: z.optional(z.array(z.number())),
+                        group_ids: z.optional(z.array(z.number())),
+                    }),
+                ),
+            ),
         }),
         z.discriminatedUnion("type", [
             z.object({
